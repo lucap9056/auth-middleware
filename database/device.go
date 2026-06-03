@@ -46,3 +46,9 @@ func (d *Database) DeleteDevice(userID, deviceID string) error {
 	_, err := d.db.Exec(query, userID, deviceID)
 	return err
 }
+
+func (d *Database) DeleteAllDevices(userID string) error {
+	query := `DELETE FROM user_devices WHERE user_id = $1`
+	_, err := d.db.Exec(query, userID)
+	return err
+}
