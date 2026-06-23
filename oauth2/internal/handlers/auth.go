@@ -323,6 +323,43 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	sendJSONResponse(w, true, "Logged out and device session revoked", http.StatusOK, nil)
 }
 
+func (h *AuthHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		sendJSONResponse(w, false, "Missing Bearer token", http.StatusUnauthorized, nil)
+		return
+	}
+
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+	claims, err := h.jwtManager.VerifyAccess(tokenStr)
+	if err != nil {
+		sendJSONResponse(w, false, "Invalid access token", http.StatusUnauthorized, err)
+		return
+	}
+
+	userID := claims.UserID
+
+	if err := h.db.DeleteAllDevices(userID); err != nil {
+		sendJSONResponse(w, false, "Failed to remove device sessions", http.StatusInternalServerError, err)
+		return
+	}
+
+	if err := h.db.DeleteUser(userID); err != nil {
+		sendJSONResponse(w, false, "Failed to delete account", http.StatusInternalServerError, err)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     CookieRefreshToken,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+
+	sendJSONResponse(w, true, "Account deleted", http.StatusOK, nil)
+}
+
 func (h *AuthHandler) setRefreshCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     CookieRefreshToken,
