@@ -12,6 +12,8 @@ import (
 	"github.com/lucap9056/auth-middleware/database"
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/device"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/go-envfile/envfile"
 	"github.com/lucap9056/go-lifecycle/lifecycle"
@@ -48,18 +50,38 @@ func main() {
 	var db *database.Database
 	databaseUrl := os.Getenv(EnvDatabaseURL)
 	if databaseUrl != "" {
-
 		dbOptions := database.FromEnv()
-		db, err := database.NewDatabase(databaseUrl, dbOptions)
+		var err error
+		db, err = database.NewDatabase(databaseUrl, dbOptions)
 		if err != nil {
 			log.Fatalf("Failed to open database: %v", err)
 		}
 		defer db.Close()
-
 	}
 
 	jwtOptions := jwt.FromEnv()
-	jwtManager := jwt.NewJWTManager(db, jwtOptions)
+
+	redisURL := os.Getenv(EnvRedisURL)
+
+	redisClient, err := cache.NewRedisClient(redisURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	if redisClient != nil {
+		defer redisClient.Close()
+	}
+
+	deviceCache := device.NewSecretCache(redisClient)
+
+	var jwtDB jwt.Database
+	var handlerDB handlers.DB
+	if db != nil {
+		cachedDB := device.NewCachedDB(db, deviceCache)
+		jwtDB = cachedDB
+		handlerDB = cachedDB
+	}
+
+	jwtManager := jwt.NewJWTManager(jwtDB, jwtOptions)
 
 	httpAddress := os.Getenv(EnvHTTPAddress)
 	if httpAddress == "" {
@@ -104,8 +126,7 @@ func main() {
 		log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider, httpAddress, mode)
 	}
 
-	var cacaheOptions []cache.CacheOption
-	redisURL := os.Getenv(EnvRedisURL)
+	var tokenCacheOpts []token.Option
 	refreshTokenTTL := os.Getenv(EnvRefreshTokenTTL)
 
 	if refreshTokenTTL != "" {
@@ -113,13 +134,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Invalid REFRESH_TOKEN_TTL: %v", err)
 		}
-		cacaheOptions = append(cacaheOptions, cache.WithTTL(duration))
+		tokenCacheOpts = append(tokenCacheOpts, token.WithTTL(duration))
+	}
 
-	}
-	refreshCache, err := cache.NewCache(redisURL)
-	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
-	}
+	refreshCache := token.NewCache(redisClient, tokenCacheOpts...)
 
 	var authOptions []handlers.AuthOption
 	if devMode {
@@ -132,7 +150,7 @@ func main() {
 		authOptions = append(authOptions, handlers.WithPassOAuthToken(true))
 	}
 
-	authHandler := handlers.NewAuthHandler(db, jwtManager, refreshCache, oauth2Handler, authOptions...)
+	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, oauth2Handler, authOptions...)
 
 	mux := http.NewServeMux()
 
