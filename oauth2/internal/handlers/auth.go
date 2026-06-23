@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucap9056/auth-middleware/database"
 	"github.com/lucap9056/auth-middleware/jwt"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 )
 
 const (
@@ -36,14 +35,14 @@ type LoginResponse struct {
 }
 
 type AuthHandler struct {
-	db            *database.Database
+	db            DB
 	jwtManager    *jwt.JWTManager
-	refreshCache  cache.Cache
+	refreshCache  token.Cache
 	oauth2Handler *OAuth2Handler
 	config        *AuthConfig
 }
 
-func NewAuthHandler(db *database.Database, jwtManager *jwt.JWTManager, refreshCache cache.Cache, oauth2Handler *OAuth2Handler, opts ...AuthOption) *AuthHandler {
+func NewAuthHandler(db DB, jwtManager *jwt.JWTManager, refreshCache token.Cache, oauth2Handler *OAuth2Handler, opts ...AuthOption) *AuthHandler {
 	config := &AuthConfig{
 		DevMode:           false,
 		AllowRegistration: false,
@@ -106,14 +105,14 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	token, err := h.oauth2Handler.Exchange(ctx, code, codeVerifier)
+	oauthToken, err := h.oauth2Handler.Exchange(ctx, code, codeVerifier)
 	if err != nil {
 		sendJSONResponse(w, false, "Code exchange failed", http.StatusInternalServerError, err)
 		return
 	}
 
 	if h.db != nil {
-		user, err := h.oauth2Handler.GetUser(ctx, token)
+		user, err := h.oauth2Handler.GetUser(ctx, oauthToken)
 		if err != nil {
 			sendJSONResponse(w, false, "Failed to fetch user info", http.StatusInternalServerError, err)
 			return
@@ -162,13 +161,13 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		h.setRefreshCookie(w, refreshToken)
 
 		if h.config.PassOAuthToken {
-			w.Header().Set("X-Forwarded-Refresh-Token", token.RefreshToken)
-			w.Header().Set("X-Forwarded-Access-Token", token.AccessToken)
+			w.Header().Set("X-Forwarded-Refresh-Token", oauthToken.RefreshToken)
+			w.Header().Set("X-Forwarded-Access-Token", oauthToken.AccessToken)
 		} else {
-			h.oauth2Handler.Revoke(r.Context(), token)
+			h.oauth2Handler.Revoke(r.Context(), oauthToken)
 		}
 
-		sendJSONResponse(w, true, &cache.TokenPair{
+		sendJSONResponse(w, true, &token.TokenPair{
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken,
 		}, http.StatusOK, nil)
@@ -176,14 +175,14 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.config.PassOAuthToken {
-		w.Header().Set("X-Forwarded-Refresh-Token", token.RefreshToken)
-		w.Header().Set("X-Forwarded-Access-Token", token.AccessToken)
+		w.Header().Set("X-Forwarded-Refresh-Token", oauthToken.RefreshToken)
+		w.Header().Set("X-Forwarded-Access-Token", oauthToken.AccessToken)
 		sendJSONResponse(w, true, "Logged in", http.StatusOK, nil)
 		return
 	} else {
-		sendJSONResponse(w, true, &cache.TokenPair{
-			AccessToken:  token.AccessToken,
-			RefreshToken: token.RefreshToken,
+		sendJSONResponse(w, true, &token.TokenPair{
+			AccessToken:  oauthToken.AccessToken,
+			RefreshToken: oauthToken.RefreshToken,
 		}, http.StatusOK, nil)
 		return
 	}
@@ -218,7 +217,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cachedToken, err := h.refreshCache.Get(r.Context(), refreshToken)
-	if err == nil {
+	if err == nil && cachedToken != nil {
 		sendJSONResponse(w, true, cachedToken, http.StatusOK, nil)
 		return
 	}
@@ -243,7 +242,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := cache.TokenPair{
+	token := token.TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 	}
