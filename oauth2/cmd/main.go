@@ -160,6 +160,7 @@ func main() {
 		mux.HandleFunc("POST /refresh-access", authHandler.RefreshAccess)
 		mux.HandleFunc("POST /logout", authHandler.Logout)
 		mux.HandleFunc("GET /verify", authHandler.Verify)
+		mux.HandleFunc("DELETE /users/me", authHandler.DeleteMe)
 	}
 
 	if enableOAuth2 {
