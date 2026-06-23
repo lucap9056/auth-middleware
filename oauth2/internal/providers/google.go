@@ -33,11 +33,12 @@ func WithGoogle(cfg *oauth2.Config) *oauth2.Config {
 }
 
 type GoogleProvider struct {
-	config *oauth2.Config
+	config     *oauth2.Config
+	httpClient *http.Client
 }
 
 func NewGoogleProvider(config *oauth2.Config) *GoogleProvider {
-	return &GoogleProvider{config}
+	return &GoogleProvider{config: config, httpClient: http.DefaultClient}
 }
 
 func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -77,7 +78,7 @@ func (p *GoogleProvider) Revoke(ctx context.Context, token *oauth2.Token) error 
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
 	}

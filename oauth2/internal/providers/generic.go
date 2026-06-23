@@ -21,10 +21,11 @@ type GenericProvider struct {
 	config      *oauth2.Config
 	userInfoURL string
 	revokeURL   string
+	httpClient  *http.Client
 }
 
 func NewGenericProvider(config *oauth2.Config, userInfoURL string, revokeURL string) *GenericProvider {
-	return &GenericProvider{config: config, userInfoURL: userInfoURL, revokeURL: revokeURL}
+	return &GenericProvider{config: config, userInfoURL: userInfoURL, revokeURL: revokeURL, httpClient: http.DefaultClient}
 }
 
 func (p *GenericProvider) GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -73,7 +74,7 @@ func (p *GenericProvider) Revoke(ctx context.Context, token *oauth2.Token) error
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send revoke request: %w", err)
 	}

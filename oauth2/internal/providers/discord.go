@@ -35,11 +35,12 @@ func WithDiscord(cfg *oauth2.Config) *oauth2.Config {
 }
 
 type DiscordProvider struct {
-	config *oauth2.Config
+	config     *oauth2.Config
+	httpClient *http.Client
 }
 
 func NewDiscordProvider(config *oauth2.Config) *DiscordProvider {
-	return &DiscordProvider{config}
+	return &DiscordProvider{config: config, httpClient: http.DefaultClient}
 }
 
 func (p *DiscordProvider) GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
@@ -79,7 +80,7 @@ func (p *DiscordProvider) Revoke(ctx context.Context, token *oauth2.Token) error
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
