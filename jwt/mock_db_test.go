@@ -24,3 +24,13 @@ func (db *MockDatabase) GetDeviceSecret(deviceID string) (string, error) {
 	}
 	return secret, nil
 }
+
+type MockErrDatabase struct {
+	updateErr error
+	getErr    error
+}
+
+func (db *MockErrDatabase) UpdateDeviceSecret(_, _ string) error { return db.updateErr }
+func (db *MockErrDatabase) GetDeviceSecret(_ string) (string, error) {
+	return "", db.getErr
+}
