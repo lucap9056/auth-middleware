@@ -2,11 +2,9 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-COPY database/ ./database/
-COPY jwt/ ./jwt/
-COPY oauth2/ ./oauth2/
-
-WORKDIR /app/oauth2
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -v -ldflags "-X main.mode=production" -o /dist/oauth2 ./cmd
