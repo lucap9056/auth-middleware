@@ -297,7 +297,7 @@ func (h *AuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("X-Forwarded-User-ID", claims.UserID)
 	w.Header().Set("X-Forwarded-Device-ID", claims.DeviceID)
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
