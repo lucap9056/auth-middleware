@@ -17,11 +17,11 @@ const (
 
 type OAuth2Handler struct {
 	config      *oauth2.Config
-	userInfoURL string
+	userinfoURL string
 	provider    providers.Provider
 }
 
-func NewOAuth2Handler(providerName, clientID, clientSecret, redirectURL, authURL, tokenURL string, scopes []string, userInfoURL string, revokeURL string) *OAuth2Handler {
+func NewOAuth2Handler(providerName, clientID, clientSecret, redirectURL, authURL, tokenURL string, scopes []string, userinfoURL string, revokeURL string) *OAuth2Handler {
 	config := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -40,12 +40,12 @@ func NewOAuth2Handler(providerName, clientID, clientSecret, redirectURL, authURL
 	case ProviderGoogleName:
 		p = providers.NewGoogleProvider(providers.WithGoogle(config))
 	default:
-		p = providers.NewGenericProvider(config, userInfoURL, revokeURL)
+		p = providers.NewGenericProvider(config, userinfoURL, revokeURL)
 	}
 
 	return &OAuth2Handler{
 		config:      config,
-		userInfoURL: userInfoURL,
+		userinfoURL: userinfoURL,
 		provider:    p,
 	}
 }
@@ -70,7 +70,7 @@ func (h *OAuth2Handler) Exchange(ctx context.Context, code string, verifier stri
 	return h.config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 }
 
-func (h *OAuth2Handler) GetUser(ctx context.Context, token *oauth2.Token) (*providers.UserInfo, error) {
+func (h *OAuth2Handler) GetUser(ctx context.Context, token *oauth2.Token) (*providers.Userinfo, error) {
 	return h.provider.GetUser(ctx, token)
 }
 

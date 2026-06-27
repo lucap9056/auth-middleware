@@ -19,18 +19,18 @@ type GenericUser struct {
 
 type GenericProvider struct {
 	config      *oauth2.Config
-	userInfoURL string
+	userinfoURL string
 	revokeURL   string
 	httpClient  *http.Client
 }
 
-func NewGenericProvider(config *oauth2.Config, userInfoURL string, revokeURL string) *GenericProvider {
-	return &GenericProvider{config: config, userInfoURL: userInfoURL, revokeURL: revokeURL, httpClient: http.DefaultClient}
+func NewGenericProvider(config *oauth2.Config, userinfoURL string, revokeURL string) *GenericProvider {
+	return &GenericProvider{config: config, userinfoURL: userinfoURL, revokeURL: revokeURL, httpClient: http.DefaultClient}
 }
 
-func (p *GenericProvider) GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
+func (p *GenericProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
 	client := p.config.Client(ctx, token)
-	resp, err := client.Get(p.userInfoURL)
+	resp, err := client.Get(p.userinfoURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
@@ -45,7 +45,7 @@ func (p *GenericProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Us
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
 
-	return &UserInfo{
+	return &Userinfo{
 		ID:    user.ID,
 		Email: user.Email,
 		Name:  user.Name,

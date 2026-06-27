@@ -29,7 +29,7 @@ const (
 	EnvOAuth2RedirectURL  = "OAUTH2_REDIRECT_URL"
 	EnvOAuth2AuthURL      = "OAUTH2_AUTH_URL"
 	EnvOAuth2TokenURL     = "OAUTH2_TOKEN_URL"
-	EnvOAuth2UserInfoURL  = "OAUTH2_USER_INFO_URL"
+	EnvOAuth2UserinfoURL  = "OAUTH2_USERINFO_URL"
 	EnvOAuth2RevokeURL    = "OAUTH2_REVOKE_URL"
 	EnvOAuth2Scopes       = "OAUTH2_SCOPES"
 	EnvHTTPMode           = "HTTP_MODE"
@@ -108,21 +108,21 @@ func main() {
 
 		authURL := os.Getenv(EnvOAuth2AuthURL)
 		tokenURL := os.Getenv(EnvOAuth2TokenURL)
-		userInfoURL := os.Getenv(EnvOAuth2UserInfoURL)
+		userinfoURL := os.Getenv(EnvOAuth2UserinfoURL)
 		revokeURL := os.Getenv(EnvOAuth2RevokeURL)
 		scopesStr := os.Getenv(EnvOAuth2Scopes)
 		provider := os.Getenv(EnvOAuth2Provider)
 
 		isGeneric := (provider != handlers.ProviderDiscordName && provider != handlers.ProviderGoogleName)
-		if isGeneric && (authURL == "" || tokenURL == "" || userInfoURL == "") {
-			log.Fatalln("Generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USER_INFO_URL")
+		if isGeneric && (authURL == "" || tokenURL == "" || userinfoURL == "") {
+			log.Fatalln("Generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
 		}
 
 		scopes := strings.Split(scopesStr, ",")
 		for i := range scopes {
 			scopes[i] = strings.TrimSpace(scopes[i])
 		}
-		oauth2Handler = handlers.NewOAuth2Handler(provider, clientID, clientSecret, redirectURL, authURL, tokenURL, scopes, userInfoURL, revokeURL)
+		oauth2Handler = handlers.NewOAuth2Handler(provider, clientID, clientSecret, redirectURL, authURL, tokenURL, scopes, userinfoURL, revokeURL)
 
 		log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider, httpAddress, mode)
 	}

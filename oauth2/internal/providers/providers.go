@@ -6,13 +6,13 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type UserInfo struct {
+type Userinfo struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
 }
 
 type Provider interface {
-	GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error)
+	GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error)
 	Revoke(ctx context.Context, token *oauth2.Token) error
 }

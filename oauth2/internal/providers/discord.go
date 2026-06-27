@@ -43,7 +43,7 @@ func NewDiscordProvider(config *oauth2.Config) *DiscordProvider {
 	return &DiscordProvider{config: config, httpClient: http.DefaultClient}
 }
 
-func (p *DiscordProvider) GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
+func (p *DiscordProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
 	client := p.config.Client(ctx, token)
 	resp, err := client.Get("https://discord.com/api/users/@me")
 	if err != nil {
@@ -60,7 +60,7 @@ func (p *DiscordProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Us
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
 
-	return &UserInfo{
+	return &Userinfo{
 		ID:    user.ID,
 		Email: user.Email,
 		Name:  user.Username,

@@ -41,7 +41,7 @@ func NewGoogleProvider(config *oauth2.Config) *GoogleProvider {
 	return &GoogleProvider{config: config, httpClient: http.DefaultClient}
 }
 
-func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
+func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
 	client := p.config.Client(ctx, token)
 
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
@@ -59,7 +59,7 @@ func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Use
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
 
-	return &UserInfo{
+	return &Userinfo{
 		ID:    user.ID,
 		Email: user.Email,
 		Name:  user.Name,
