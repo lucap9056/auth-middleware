@@ -63,7 +63,11 @@ func generatePKCE() (verifier string, challenge string) {
 }
 
 func (h *OAuth2Handler) AuthURL(state string, challenge string) string {
-	return h.config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(challenge))
+	return h.config.AuthCodeURL(state,
+		oauth2.AccessTypeOffline,
+		oauth2.SetAuthURLParam("code_challenge", challenge),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	)
 }
 
 func (h *OAuth2Handler) Exchange(ctx context.Context, code string, verifier string) (*oauth2.Token, error) {
