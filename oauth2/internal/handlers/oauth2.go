@@ -12,6 +12,7 @@ import (
 
 const (
 	ProviderDiscordName = "discord"
+	ProviderGitHubName  = "github"
 	ProviderGoogleName  = "google"
 )
 
@@ -37,6 +38,8 @@ func NewOAuth2Handler(providerName, clientID, clientSecret, redirectURL, authURL
 	switch providerName {
 	case ProviderDiscordName:
 		p = providers.NewDiscordProvider(providers.WithDiscord(config))
+	case ProviderGitHubName:
+		p = providers.NewGitHubProvider(providers.WithGitHub(config))
 	case ProviderGoogleName:
 		p = providers.NewGoogleProvider(providers.WithGoogle(config))
 	default:

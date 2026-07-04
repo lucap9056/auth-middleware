@@ -113,7 +113,7 @@ func main() {
 		scopesStr := os.Getenv(EnvOAuth2Scopes)
 		provider := os.Getenv(EnvOAuth2Provider)
 
-		isGeneric := (provider != handlers.ProviderDiscordName && provider != handlers.ProviderGoogleName)
+		isGeneric := (provider != handlers.ProviderDiscordName && provider != handlers.ProviderGitHubName && provider != handlers.ProviderGoogleName)
 		if isGeneric && (authURL == "" || tokenURL == "" || userinfoURL == "") {
 			log.Fatalln("Generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
 		}
