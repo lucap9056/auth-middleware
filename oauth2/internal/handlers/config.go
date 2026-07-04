@@ -16,6 +16,7 @@ type AuthConfig struct {
 	DevMode           bool
 	AllowRegistration bool
 	PassOAuthToken    bool
+	ClientPKCE        bool
 }
 
 type AuthOption func(*AuthConfig)
@@ -36,4 +37,8 @@ func WithPassOAuthToken(enabled bool) AuthOption {
 	return func(c *AuthConfig) {
 		c.PassOAuthToken = enabled
 	}
+}
+
+func WithClientPKCE(enabled bool) AuthOption {
+	return func(c *AuthConfig) { c.ClientPKCE = enabled }
 }
