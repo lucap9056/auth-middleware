@@ -5,6 +5,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"log"
+	"net/http"
+	"slices"
+	"time"
 
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"golang.org/x/oauth2"
@@ -14,6 +18,7 @@ const (
 	ProviderDiscordName = "discord"
 	ProviderGitHubName  = "github"
 	ProviderGoogleName  = "google"
+	ProviderOIDCName    = "oidc"
 )
 
 type OAuth2Handler struct {
@@ -46,11 +51,46 @@ func NewOAuth2Handler(providerName, clientID, clientSecret, redirectURL, authURL
 		p = providers.NewGenericProvider(config, userinfoURL, revokeURL)
 	}
 
+	warmTokenEndpoint(tokenURL)
+
 	return &OAuth2Handler{
 		config:      config,
 		userinfoURL: userinfoURL,
 		provider:    p,
 	}
+}
+
+// NewOIDCHandler builds an OAuth2Handler using OIDC discovery. It fetches the
+// provider's well-known configuration document and auto-populates all endpoints.
+// The "openid" scope is automatically added if not already present.
+func NewOIDCHandler(ctx context.Context, issuerURL, clientID, clientSecret, redirectURL string, scopes []string) (*OAuth2Handler, error) {
+	discovery, err := providers.FetchDiscovery(ctx, issuerURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if !slices.Contains(scopes, "openid") {
+		scopes = append([]string{"openid"}, scopes...)
+	}
+
+	config := &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       scopes,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  discovery.AuthorizationEndpoint,
+			TokenURL: discovery.TokenEndpoint,
+		},
+	}
+
+	warmTokenEndpoint(discovery.TokenEndpoint)
+
+	return &OAuth2Handler{
+		config:      config,
+		userinfoURL: discovery.UserinfoEndpoint,
+		provider:    providers.NewOIDCProvider(config, discovery),
+	}, nil
 }
 
 func generatePKCE() (verifier string, challenge string) {
@@ -83,4 +123,22 @@ func (h *OAuth2Handler) GetUser(ctx context.Context, token *oauth2.Token) (*prov
 
 func (h *OAuth2Handler) Revoke(ctx context.Context, token *oauth2.Token) error {
 	return h.provider.Revoke(ctx, token)
+}
+
+func warmTokenEndpoint(tokenURL string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
+		if err != nil {
+			return
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Printf("[WARN] token endpoint warm-up failed: %v", err)
+			return
+		}
+		resp.Body.Close()
+	}()
 }

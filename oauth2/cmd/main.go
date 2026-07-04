@@ -32,6 +32,7 @@ const (
 	EnvOAuth2UserinfoURL  = "OAUTH2_USERINFO_URL"
 	EnvOAuth2RevokeURL    = "OAUTH2_REVOKE_URL"
 	EnvOAuth2Scopes       = "OAUTH2_SCOPES"
+	EnvOIDCIssuerURL      = "OIDC_ISSUER_URL"
 	EnvHTTPMode           = "HTTP_MODE"
 	EnvAllowRegistration  = "ALLOW_REGISTRATION"
 	EnvPassOAuthToken     = "PASS_OAUTH_TOKEN"
@@ -101,11 +102,32 @@ func main() {
 	devMode := (mode == ModeDevelopment)
 
 	enableOAuth2 := clientID != "" && clientSecret != "" && redirectURL != ""
+	oidcIssuer := os.Getenv(EnvOIDCIssuerURL)
 
 	var oauth2Handler *handlers.OAuth2Handler
 
-	if enableOAuth2 {
+	switch {
+	case oidcIssuer != "" && !enableOAuth2:
+		log.Fatalln("OIDC_ISSUER_URL requires OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, and OAUTH2_REDIRECT_URL")
+	case oidcIssuer != "":
+		scopesStr := os.Getenv(EnvOAuth2Scopes)
+		scopes := strings.Split(scopesStr, ",")
+		for i := range scopes {
+			scopes[i] = strings.TrimSpace(scopes[i])
+		}
 
+		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer discoveryCancel()
+
+		var err error
+		oauth2Handler, err = handlers.NewOIDCHandler(discoveryCtx, oidcIssuer, clientID, clientSecret, redirectURL, scopes)
+		if err != nil {
+			log.Fatalf("OIDC setup failed: %v", err)
+		}
+		enableOAuth2 = true
+		log.Printf("Starting OIDC server (Issuer: %s) on %s (Mode: %s)", oidcIssuer, httpAddress, mode)
+
+	case enableOAuth2:
 		authURL := os.Getenv(EnvOAuth2AuthURL)
 		tokenURL := os.Getenv(EnvOAuth2TokenURL)
 		userinfoURL := os.Getenv(EnvOAuth2UserinfoURL)
