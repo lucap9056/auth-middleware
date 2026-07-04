@@ -14,6 +14,7 @@ import (
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/device"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/go-envfile/envfile"
@@ -32,6 +33,7 @@ const (
 	EnvOAuth2UserinfoURL  = "OAUTH2_USERINFO_URL"
 	EnvOAuth2RevokeURL    = "OAUTH2_REVOKE_URL"
 	EnvOAuth2Scopes       = "OAUTH2_SCOPES"
+	EnvOAuth2ClientPKCE   = "OAUTH2_CLIENT_PKCE"
 	EnvOIDCIssuerURL      = "OIDC_ISSUER_URL"
 	EnvHTTPMode           = "HTTP_MODE"
 	EnvAllowRegistration  = "ALLOW_REGISTRATION"
@@ -161,6 +163,7 @@ func main() {
 	}
 
 	refreshCache := token.NewCache(redisClient, tokenCacheOpts...)
+	stateCache := state.NewCache(redisClient)
 
 	var authOptions []handlers.AuthOption
 	if devMode {
@@ -173,7 +176,11 @@ func main() {
 		authOptions = append(authOptions, handlers.WithPassOAuthToken(true))
 	}
 
-	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, oauth2Handler, authOptions...)
+	if os.Getenv(EnvOAuth2ClientPKCE) == "true" {
+		authOptions = append(authOptions, handlers.WithClientPKCE(true))
+	}
+
+	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Handler, authOptions...)
 
 	mux := http.NewServeMux()
 

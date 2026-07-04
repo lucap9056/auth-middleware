@@ -10,6 +10,7 @@ import (
 
 	"github.com/lucap9056/auth-middleware/database"
 	"github.com/lucap9056/auth-middleware/jwt"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 )
@@ -197,7 +198,8 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...handlers.AuthOption) *testE
 
 	jwtManager := jwt.NewJWTManager(jwtDB)
 	refreshCache := token.NewCache(nil)
-	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, oauth2Handler, opts...)
+	stateCache := state.NewCache(nil)
+	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Handler, opts...)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", authHandler.Health)

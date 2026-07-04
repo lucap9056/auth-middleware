@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -38,9 +39,7 @@ func TestLogin(t *testing.T) {
 	var resp struct {
 		Success bool `json:"success"`
 		Message struct {
-			Verifier  string `json:"verifier"`
-			Challenge string `json:"challenge"`
-			URL       string `json:"url"`
+			URL string `json:"url"`
 		} `json:"message"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -49,12 +48,45 @@ func TestLogin(t *testing.T) {
 	if !resp.Success {
 		t.Fatal("want success=true")
 	}
-	if resp.Message.Verifier == "" || resp.Message.Challenge == "" {
-		t.Error("want non-empty verifier and challenge")
-	}
 	if !strings.Contains(resp.Message.URL, stub.URL) {
 		t.Errorf("URL %q should point to stub server %s", resp.Message.URL, stub.URL)
 	}
+	u, err := url.Parse(resp.Message.URL)
+	if err != nil {
+		t.Fatalf("parse URL: %v", err)
+	}
+	if u.Query().Get("state") == "" {
+		t.Error("URL should contain a non-empty state parameter")
+	}
+	if u.Query().Get("code_challenge") == "" {
+		t.Error("URL should contain a non-empty code_challenge parameter")
+	}
+}
+
+// loginState calls /login and extracts the state parameter from the returned URL.
+func loginState(t *testing.T, env *testEnv) string {
+	t.Helper()
+	w := env.do(httptest.NewRequest(http.MethodGet, "/login", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("login failed: %d %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Message struct {
+			URL string `json:"url"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	u, err := url.Parse(resp.Message.URL)
+	if err != nil {
+		t.Fatalf("parse login URL: %v", err)
+	}
+	s := u.Query().Get("state")
+	if s == "" {
+		t.Fatal("login URL missing state parameter")
+	}
+	return s
 }
 
 // TestCallback_ExistingUser verifies the full OAuth2 callback for a known user:
@@ -73,7 +105,8 @@ func TestCallback_ExistingUser(t *testing.T) {
 	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
 	env := newTestEnv(stub, db)
 
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&code_verifier=testverifier", nil)
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
 	w := env.do(req)
 
 	if w.Code != http.StatusOK {
@@ -114,7 +147,8 @@ func TestCallback_RegistrationDisabled(t *testing.T) {
 
 	env := newTestEnv(stub, newMockDB()) // AllowRegistration defaults to false
 
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&code_verifier=testverifier", nil)
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
 	w := env.do(req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -131,7 +165,8 @@ func TestCallback_RegistrationEnabled(t *testing.T) {
 	db := newMockDB()
 	env := newTestEnv(stub, db, handlers.WithAllowRegistration(true))
 
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&code_verifier=testverifier", nil)
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
 	w := env.do(req)
 
 	if w.Code != http.StatusOK {
@@ -154,17 +189,54 @@ func TestCallback_RegistrationEnabled(t *testing.T) {
 	}
 }
 
-func TestCallback_MissingVerifier(t *testing.T) {
+func TestCallback_MissingState(t *testing.T) {
 	stub := newOAuthStub("u1", "a@b.com", "A")
 	defer stub.Close()
 
 	env := newTestEnv(stub, newMockDB())
 
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode", nil) // no code_verifier
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode", nil) // no state
 	w := env.do(req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d", w.Code)
+	}
+}
+
+func TestCallback_InvalidState(t *testing.T) {
+	stub := newOAuthStub("u1", "a@b.com", "A")
+	defer stub.Close()
+
+	env := newTestEnv(stub, newMockDB())
+
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state=unknown-state", nil)
+	w := env.do(req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", w.Code)
+	}
+}
+
+func TestCallback_StateReplay(t *testing.T) {
+	stub := newOAuthStub("u1", "a@b.com", "A")
+	defer stub.Close()
+
+	env := newTestEnv(stub, nil)
+
+	stateVal := loginState(t, env)
+
+	// First use succeeds
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
+	w := env.do(req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first callback: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Replay with the same state must fail
+	req2 := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
+	w2 := env.do(req2)
+	if w2.Code != http.StatusBadRequest {
+		t.Fatalf("replay callback: want 400, got %d", w2.Code)
 	}
 }
 
@@ -176,7 +248,8 @@ func TestCallback_NoDB_OAuthTokens(t *testing.T) {
 
 	env := newTestEnv(stub, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&code_verifier=testverifier", nil)
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
 	w := env.do(req)
 
 	if w.Code != http.StatusOK {
@@ -210,7 +283,8 @@ func TestCallback_NoDB_PassOAuthToken(t *testing.T) {
 
 	env := newTestEnv(stub, nil, handlers.WithPassOAuthToken(true))
 
-	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&code_verifier=testverifier", nil)
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
 	w := env.do(req)
 
 	if w.Code != http.StatusOK {

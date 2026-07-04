@@ -13,6 +13,7 @@ require (
 	github.com/lucap9056/auth-middleware/jwt v1.0.0
 	github.com/ravener/discord-oauth2 v0.0.0-20230514095040-ae65713199b3
 	github.com/redis/go-redis/v9 v9.18.0
+	golang.org/x/sync v0.21.0
 )
 
 require (
@@ -25,6 +26,5 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 )

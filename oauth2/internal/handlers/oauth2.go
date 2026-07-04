@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"log"
 	"net/http"
@@ -93,23 +92,16 @@ func NewOIDCHandler(ctx context.Context, issuerURL, clientID, clientSecret, redi
 	}, nil
 }
 
-func generatePKCE() (verifier string, challenge string) {
+func generateState() string {
 	b := make([]byte, 32)
 	rand.Read(b)
-	verifier = base64.RawURLEncoding.EncodeToString(b)
-
-	h := sha256.New()
-	h.Write([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-
-	return verifier, challenge
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (h *OAuth2Handler) AuthURL(state string, challenge string) string {
+func (h *OAuth2Handler) AuthURL(state string, verifier string) string {
 	return h.config.AuthCodeURL(state,
 		oauth2.AccessTypeOffline,
-		oauth2.SetAuthURLParam("code_challenge", challenge),
-		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+		oauth2.S256ChallengeOption(verifier),
 	)
 }
 
