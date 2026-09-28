@@ -151,6 +151,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		sendJSONResponse(w, res.Success, res.OAuth2Token, res.State, nil)
+		return
 	}
 
 	sendJSONResponse(w, false, "", http.StatusInternalServerError, nil)
