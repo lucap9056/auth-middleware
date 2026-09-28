@@ -14,7 +14,8 @@ type Cache interface {
 }
 
 type config struct {
-	TTL time.Duration
+	TTL         time.Duration
+	MaximumSize int
 }
 
 type Option func(*config)
@@ -25,14 +26,20 @@ func WithTTL(ttl time.Duration) Option {
 	}
 }
 
-func NewCache(client *redis.Client, opts ...Option) Cache {
-	cfg := &config{TTL: 10 * time.Minute}
+func WithMaximumSize(size int) Option {
+	return func(c *config) {
+		c.MaximumSize = size
+	}
+}
+
+func NewCache(client *redis.Client, opts ...Option) (Cache, error) {
+	cfg := &config{TTL: 10 * time.Minute, MaximumSize: 100_000}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
 	if client == nil {
-		return newMemoryCache(cfg.TTL)
+		return newMemoryCache(cfg.MaximumSize, cfg.TTL)
 	}
-	return newRedisCache(client, cfg.TTL)
+	return newRedisCache(client, cfg.TTL), nil
 }

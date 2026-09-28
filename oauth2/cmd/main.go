@@ -166,7 +166,10 @@ func main() {
 	}
 
 	refreshCache := token.NewCache(redisClient, tokenCacheOpts...)
-	stateCache := state.NewCache(redisClient)
+	stateCache, err := state.NewCache(redisClient)
+	if err != nil {
+		log.Fatalf("Failed to create state cache: %v", err)
+	}
 
 	var authOptions []handlers.AuthOption
 	if devMode {
