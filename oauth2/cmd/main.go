@@ -75,7 +75,10 @@ func main() {
 		defer redisClient.Close()
 	}
 
-	deviceCache := device.NewSecretCache(redisClient)
+	deviceCache, err := device.NewSecretCache(redisClient)
+	if err != nil {
+		log.Fatalf("Failed to create device secret cache: %v", err)
+	}
 
 	var jwtDB jwt.Database
 	var handlerDB handlers.DB
