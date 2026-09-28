@@ -197,7 +197,10 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...handlers.AuthOption) *testE
 	)
 
 	jwtManager := jwt.NewJWTManager(jwtDB)
-	refreshCache := token.NewCache(nil)
+	refreshCache, err := token.NewCache(nil)
+	if err != nil {
+		panic(err)
+	}
 	stateCache, err := state.NewCache(nil)
 	if err != nil {
 		panic(err)

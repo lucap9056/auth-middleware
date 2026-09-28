@@ -165,7 +165,10 @@ func main() {
 		tokenCacheOpts = append(tokenCacheOpts, token.WithTTL(duration))
 	}
 
-	refreshCache := token.NewCache(redisClient, tokenCacheOpts...)
+	refreshCache, err := token.NewCache(redisClient, tokenCacheOpts...)
+	if err != nil {
+		log.Fatalf("Failed to create refresh token cache: %v", err)
+	}
 	stateCache, err := state.NewCache(redisClient)
 	if err != nil {
 		log.Fatalf("Failed to create state cache: %v", err)
