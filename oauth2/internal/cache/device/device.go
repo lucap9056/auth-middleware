@@ -18,6 +18,7 @@ type SecretCache interface {
 	AddUserDevice(userID, deviceID string)
 	RemoveUserDevice(userID, deviceID string)
 	PopAllUserDevices(userID string) []string
+	Close() error
 }
 
 func NewSecretCache(client *redis.Client) (SecretCache, error) {

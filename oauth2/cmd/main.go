@@ -79,6 +79,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create device secret cache: %v", err)
 	}
+	defer deviceCache.Close()
 
 	var jwtDB jwt.Database
 	var handlerDB handlers.DB

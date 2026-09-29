@@ -2,6 +2,8 @@ package device
 
 import (
 	"context"
+	"errors"
+	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -30,11 +32,15 @@ func (r *redisSecretCache) ctx() (context.Context, context.CancelFunc) {
 func (r *redisSecretCache) GetSecret(deviceID string) (string, bool) {
 	ctx, cancel := r.ctx()
 	defer cancel()
-	val, err := r.client.Get(ctx, secretKeyPrefix+deviceID).Result()
+
+	secret, err := r.client.Get(ctx, secretKeyPrefix+deviceID).Result()
 	if err != nil {
+		if !errors.Is(err, redis.Nil) {
+			log.Printf("[WARN] Failed to get device secret from redis: %v", err)
+		}
 		return "", false
 	}
-	return val, true
+	return secret, true
 }
 
 func (r *redisSecretCache) SetSecret(deviceID, secret string) {
@@ -47,6 +53,10 @@ func (r *redisSecretCache) DeleteSecret(deviceID string) {
 	ctx, cancel := r.ctx()
 	defer cancel()
 	r.client.Del(ctx, secretKeyPrefix+deviceID)
+}
+
+func (r *redisSecretCache) Close() error {
+	return nil
 }
 
 func (r *redisSecretCache) AddUserDevice(userID, deviceID string) {
