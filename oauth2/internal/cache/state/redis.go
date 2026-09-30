@@ -5,23 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 )
 
 const redisKeyPrefix = "oauth2:state:"
 
 type redisCache struct {
-	client *redis.Client
+	client rueidis.Client
 	ttl    time.Duration
 }
 
-func newRedisCache(client *redis.Client, ttl time.Duration) *redisCache {
+func newRedisCache(client rueidis.Client, ttl time.Duration) *redisCache {
 	return &redisCache{client: client, ttl: ttl}
 }
 
 func (r *redisCache) Get(ctx context.Context, state string) (string, error) {
-	val, err := r.client.Get(ctx, redisKeyPrefix+state).Result()
-	if err == redis.Nil {
+	val, err := r.client.Do(ctx, r.client.B().Get().Key(redisKeyPrefix+state).Build()).ToString()
+	if rueidis.IsRedisNil(err) {
 		return "", nil
 	}
 	if err != nil {
@@ -31,9 +31,9 @@ func (r *redisCache) Get(ctx context.Context, state string) (string, error) {
 }
 
 func (r *redisCache) Set(ctx context.Context, state, verifier string) error {
-	return r.client.Set(ctx, redisKeyPrefix+state, verifier, r.ttl).Err()
+	return r.client.Do(ctx, r.client.B().Set().Key(redisKeyPrefix+state).Value(verifier).Px(r.ttl).Build()).Error()
 }
 
 func (r *redisCache) Delete(ctx context.Context, state string) error {
-	return r.client.Del(ctx, redisKeyPrefix+state).Err()
+	return r.client.Do(ctx, r.client.B().Del().Key(redisKeyPrefix+state).Build()).Error()
 }

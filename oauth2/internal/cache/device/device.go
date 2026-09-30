@@ -3,7 +3,7 @@ package device
 import (
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 )
 
 const (
@@ -21,7 +21,7 @@ type SecretCache interface {
 	Close() error
 }
 
-func NewSecretCache(client *redis.Client) (SecretCache, error) {
+func NewSecretCache(client rueidis.Client) (SecretCache, error) {
 	if client == nil {
 		return newMemorySecretCache(secretMemoryMaxSize, secretTTL)
 	}

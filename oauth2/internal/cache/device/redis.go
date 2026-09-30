@@ -2,11 +2,10 @@ package device
 
 import (
 	"context"
-	"errors"
 	"log"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 )
 
 const (
@@ -17,11 +16,11 @@ const (
 )
 
 type redisSecretCache struct {
-	client *redis.Client
+	client rueidis.Client
 	ttl    time.Duration
 }
 
-func newRedisSecretCache(client *redis.Client) *redisSecretCache {
+func newRedisSecretCache(client rueidis.Client) *redisSecretCache {
 	return &redisSecretCache{client: client, ttl: secretTTL}
 }
 
@@ -33,9 +32,9 @@ func (r *redisSecretCache) GetSecret(deviceID string) (string, bool) {
 	ctx, cancel := r.ctx()
 	defer cancel()
 
-	secret, err := r.client.Get(ctx, secretKeyPrefix+deviceID).Result()
+	secret, err := r.client.Do(ctx, r.client.B().Get().Key(secretKeyPrefix+deviceID).Build()).ToString()
 	if err != nil {
-		if !errors.Is(err, redis.Nil) {
+		if !rueidis.IsRedisNil(err) {
 			log.Printf("[WARN] Failed to get device secret from redis: %v", err)
 		}
 		return "", false
@@ -46,13 +45,13 @@ func (r *redisSecretCache) GetSecret(deviceID string) (string, bool) {
 func (r *redisSecretCache) SetSecret(deviceID, secret string) {
 	ctx, cancel := r.ctx()
 	defer cancel()
-	r.client.Set(ctx, secretKeyPrefix+deviceID, secret, r.ttl)
+	r.client.Do(ctx, r.client.B().Set().Key(secretKeyPrefix+deviceID).Value(secret).Px(r.ttl).Build())
 }
 
 func (r *redisSecretCache) DeleteSecret(deviceID string) {
 	ctx, cancel := r.ctx()
 	defer cancel()
-	r.client.Del(ctx, secretKeyPrefix+deviceID)
+	r.client.Do(ctx, r.client.B().Del().Key(secretKeyPrefix+deviceID).Build())
 }
 
 func (r *redisSecretCache) Close() error {
@@ -63,24 +62,24 @@ func (r *redisSecretCache) AddUserDevice(userID, deviceID string) {
 	ctx, cancel := r.ctx()
 	defer cancel()
 	key := userDevicesPrefix + userID
-	r.client.SAdd(ctx, key, deviceID)
-	r.client.Expire(ctx, key, userDevicesTTL)
+	r.client.Do(ctx, r.client.B().Sadd().Key(key).Member(deviceID).Build())
+	r.client.Do(ctx, r.client.B().Expire().Key(key).Seconds(int64(userDevicesTTL/time.Second)).Build())
 }
 
 func (r *redisSecretCache) RemoveUserDevice(userID, deviceID string) {
 	ctx, cancel := r.ctx()
 	defer cancel()
-	r.client.SRem(ctx, userDevicesPrefix+userID, deviceID)
+	r.client.Do(ctx, r.client.B().Srem().Key(userDevicesPrefix+userID).Member(deviceID).Build())
 }
 
 func (r *redisSecretCache) PopAllUserDevices(userID string) []string {
 	ctx, cancel := r.ctx()
 	defer cancel()
 	key := userDevicesPrefix + userID
-	ids, err := r.client.SMembers(ctx, key).Result()
+	ids, err := r.client.Do(ctx, r.client.B().Smembers().Key(key).Build()).AsStrSlice()
 	if err != nil {
 		return nil
 	}
-	r.client.Del(ctx, key)
+	r.client.Do(ctx, r.client.B().Del().Key(key).Build())
 	return ids
 }

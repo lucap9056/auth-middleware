@@ -6,21 +6,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/rueidis"
 )
 
 type redisCache struct {
-	client *redis.Client
+	client rueidis.Client
 	ttl    time.Duration
 }
 
-func newRedisCache(client *redis.Client, ttl time.Duration) *redisCache {
+func newRedisCache(client rueidis.Client, ttl time.Duration) *redisCache {
 	return &redisCache{client: client, ttl: ttl}
 }
 
 func (r *redisCache) Get(ctx context.Context, key string) (*TokenPair, error) {
-	val, err := r.client.Get(ctx, key).Bytes()
-	if err == redis.Nil {
+	val, err := r.client.Do(ctx, r.client.B().Get().Key(key).Build()).AsBytes()
+	if rueidis.IsRedisNil(err) {
 		return nil, nil
 	}
 	if err != nil {
@@ -39,5 +39,5 @@ func (r *redisCache) Set(ctx context.Context, key string, value TokenPair) error
 	if err != nil {
 		return fmt.Errorf("marshal tokens failed: %w", err)
 	}
-	return r.client.Set(ctx, key, valueBytes, r.ttl).Err()
+	return r.client.Do(ctx, r.client.B().Set().Key(key).Value(rueidis.BinaryString(valueBytes)).Px(r.ttl).Build()).Error()
 }
