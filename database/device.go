@@ -52,3 +52,25 @@ func (d *Database) DeleteAllDevices(userID string) error {
 	_, err := d.db.Exec(query, userID)
 	return err
 }
+
+func (d *Database) DeleteAllDevicesReturningIDs(userID string) ([]string, error) {
+	query := `DELETE FROM user_devices WHERE user_id = $1 RETURNING device_id`
+	rows, err := d.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deviceIDs []string
+	for rows.Next() {
+		var deviceID string
+		if err := rows.Scan(&deviceID); err != nil {
+			return nil, err
+		}
+		deviceIDs = append(deviceIDs, deviceID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return deviceIDs, nil
+}

@@ -146,3 +146,62 @@ func TestDeleteAllDevices_Error(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
+
+func TestDeleteAllDevicesReturningIDs_Success(t *testing.T) {
+	d, mock := newMockDB(t)
+
+	mock.ExpectQuery(`DELETE FROM user_devices WHERE user_id = \$1 RETURNING device_id`).
+		WithArgs("uid-1").
+		WillReturnRows(sqlmock.NewRows([]string{"device_id"}).AddRow("dev-1").AddRow("dev-2"))
+
+	deviceIDs, err := d.DeleteAllDevicesReturningIDs("uid-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(deviceIDs) != 2 || deviceIDs[0] != "dev-1" || deviceIDs[1] != "dev-2" {
+		t.Errorf("deviceIDs: got %v, want [dev-1 dev-2]", deviceIDs)
+	}
+}
+
+func TestDeleteAllDevicesReturningIDs_NoDevices(t *testing.T) {
+	d, mock := newMockDB(t)
+
+	mock.ExpectQuery(`DELETE FROM user_devices`).
+		WithArgs("uid-1").
+		WillReturnRows(sqlmock.NewRows([]string{"device_id"}))
+
+	deviceIDs, err := d.DeleteAllDevicesReturningIDs("uid-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(deviceIDs) != 0 {
+		t.Errorf("deviceIDs: got %v, want empty", deviceIDs)
+	}
+}
+
+func TestDeleteAllDevicesReturningIDs_Error(t *testing.T) {
+	d, mock := newMockDB(t)
+
+	mock.ExpectQuery(`DELETE FROM user_devices`).
+		WithArgs("uid-1").
+		WillReturnError(errors.New("delete failed"))
+
+	if _, err := d.DeleteAllDevicesReturningIDs("uid-1"); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestDeleteAllDevicesReturningIDs_RowError(t *testing.T) {
+	d, mock := newMockDB(t)
+
+	mock.ExpectQuery(`DELETE FROM user_devices`).
+		WithArgs("uid-1").
+		WillReturnRows(sqlmock.NewRows([]string{"device_id"}).
+			AddRow("dev-1").
+			AddRow("dev-2").
+			RowError(1, errors.New("row failed")))
+
+	if _, err := d.DeleteAllDevicesReturningIDs("uid-1"); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
