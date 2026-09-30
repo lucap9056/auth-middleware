@@ -11,7 +11,7 @@ services:
       - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U auth -d auth"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -40,7 +40,10 @@ services:
       retries: 5
 
   oauth2-middleware:
-    image: lucap9056/oauth2-middleware:2.0.0
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: oauth2-middleware:local
     ports:
       - "8080:80"
     environment:
