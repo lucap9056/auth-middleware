@@ -9,10 +9,8 @@ import (
 )
 
 const (
-	secretKeyPrefix   = "oauth2:device:secret:"
-	userDevicesPrefix = "oauth2:user:devices:"
-	userDevicesTTL    = 30 * 24 * time.Hour
-	opTimeout         = time.Second
+	secretKeyPrefix = "oauth2:device:secret:"
+	opTimeout       = time.Second
 )
 
 type redisSecretCache struct {
@@ -56,30 +54,4 @@ func (r *redisSecretCache) DeleteSecret(deviceID string) {
 
 func (r *redisSecretCache) Close() error {
 	return nil
-}
-
-func (r *redisSecretCache) AddUserDevice(userID, deviceID string) {
-	ctx, cancel := r.ctx()
-	defer cancel()
-	key := userDevicesPrefix + userID
-	r.client.Do(ctx, r.client.B().Sadd().Key(key).Member(deviceID).Build())
-	r.client.Do(ctx, r.client.B().Expire().Key(key).Seconds(int64(userDevicesTTL/time.Second)).Build())
-}
-
-func (r *redisSecretCache) RemoveUserDevice(userID, deviceID string) {
-	ctx, cancel := r.ctx()
-	defer cancel()
-	r.client.Do(ctx, r.client.B().Srem().Key(userDevicesPrefix+userID).Member(deviceID).Build())
-}
-
-func (r *redisSecretCache) PopAllUserDevices(userID string) []string {
-	ctx, cancel := r.ctx()
-	defer cancel()
-	key := userDevicesPrefix + userID
-	ids, err := r.client.Do(ctx, r.client.B().Smembers().Key(key).Build()).AsStrSlice()
-	if err != nil {
-		return nil
-	}
-	r.client.Do(ctx, r.client.B().Del().Key(key).Build())
-	return ids
 }

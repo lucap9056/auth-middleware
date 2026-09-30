@@ -1,7 +1,6 @@
 package device
 
 import (
-	"sync"
 	"time"
 
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
@@ -9,8 +8,7 @@ import (
 )
 
 type memorySecretCache struct {
-	secrets     *otter.Cache[string, string]
-	userDevices sync.Map
+	secrets *otter.Cache[string, string]
 }
 
 func newMemorySecretCache(maximumSize int, ttl time.Duration) (*memorySecretCache, error) {
@@ -38,28 +36,4 @@ func (m *memorySecretCache) DeleteSecret(deviceID string) {
 func (m *memorySecretCache) Close() error {
 	m.secrets.StopAllGoroutines()
 	return nil
-}
-
-func (m *memorySecretCache) AddUserDevice(userID, deviceID string) {
-	actual, _ := m.userDevices.LoadOrStore(userID, &sync.Map{})
-	actual.(*sync.Map).Store(deviceID, struct{}{})
-}
-
-func (m *memorySecretCache) RemoveUserDevice(userID, deviceID string) {
-	if devMap, ok := m.userDevices.Load(userID); ok {
-		devMap.(*sync.Map).Delete(deviceID)
-	}
-}
-
-func (m *memorySecretCache) PopAllUserDevices(userID string) []string {
-	devMap, ok := m.userDevices.LoadAndDelete(userID)
-	if !ok {
-		return nil
-	}
-	var ids []string
-	devMap.(*sync.Map).Range(func(k, _ any) bool {
-		ids = append(ids, k.(string))
-		return true
-	})
-	return ids
 }

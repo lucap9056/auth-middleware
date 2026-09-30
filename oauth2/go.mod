@@ -9,7 +9,7 @@ require (
 )
 
 require (
-	github.com/lucap9056/auth-middleware/database v1.1.0
+	github.com/lucap9056/auth-middleware/database v1.2.0
 	github.com/lucap9056/auth-middleware/jwt v1.0.0
 	github.com/maypok86/otter/v2 v2.3.0
 	github.com/ravener/discord-oauth2 v0.0.0-20230514095040-ae65713199b3

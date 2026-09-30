@@ -15,9 +15,6 @@ type SecretCache interface {
 	GetSecret(deviceID string) (string, bool)
 	SetSecret(deviceID, secret string)
 	DeleteSecret(deviceID string)
-	AddUserDevice(userID, deviceID string)
-	RemoveUserDevice(userID, deviceID string)
-	PopAllUserDevices(userID string) []string
 	Close() error
 }
 

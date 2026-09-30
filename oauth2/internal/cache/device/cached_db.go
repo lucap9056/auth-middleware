@@ -36,7 +36,6 @@ func (c *CachedDB) SaveDeviceSecret(userID, deviceName, secret string) (string, 
 	if err != nil {
 		return "", err
 	}
-	c.cache.AddUserDevice(userID, deviceID)
 	c.cache.SetSecret(deviceID, secret)
 	return deviceID, nil
 }
@@ -46,15 +45,16 @@ func (c *CachedDB) DeleteDevice(userID, deviceID string) error {
 		return err
 	}
 	c.cache.DeleteSecret(deviceID)
-	c.cache.RemoveUserDevice(userID, deviceID)
 	return nil
 }
 
 func (c *CachedDB) DeleteAllDevices(userID string) error {
-	if err := c.Database.DeleteAllDevices(userID); err != nil {
+	ids, err := c.Database.DeleteAllDevicesReturningIDs(userID)
+	if err != nil {
 		return err
 	}
-	for _, deviceID := range c.cache.PopAllUserDevices(userID) {
+
+	for _, deviceID := range ids {
 		c.cache.DeleteSecret(deviceID)
 	}
 	return nil

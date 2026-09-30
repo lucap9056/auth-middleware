@@ -53,21 +53,6 @@ func TestMemorySecretCache_Delete(t *testing.T) {
 	}
 }
 
-func TestMemorySecretCache_UserDevices(t *testing.T) {
-	c := newTestMemoryCache(t, time.Minute)
-	c.AddUserDevice("u1", "d1")
-	c.AddUserDevice("u1", "d2")
-	c.RemoveUserDevice("u1", "d2")
-
-	ids := c.PopAllUserDevices("u1")
-	if len(ids) != 1 || ids[0] != "d1" {
-		t.Fatalf("PopAllUserDevices = %v; want [d1]", ids)
-	}
-	if ids := c.PopAllUserDevices("u1"); ids != nil {
-		t.Fatalf("second PopAllUserDevices = %v; want nil", ids)
-	}
-}
-
 func TestNewMemorySecretCache_InvalidSize(t *testing.T) {
 	if _, err := newMemorySecretCache(0, time.Minute); err == nil {
 		t.Fatal("expected error for zero maximum size")
