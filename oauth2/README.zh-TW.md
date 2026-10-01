@@ -17,6 +17,11 @@
 | 變數 | 說明 |
 | :--- | :--- |
 | `DATABASE_URL` | PostgreSQL 連線字串 |
+| `DB_MAX_OPEN_CONNS` | 資料庫最大連線數 (預設: `20`) |
+| `DB_MAX_IDLE_CONNS` | 資料庫最大閒置連線數 (預設: `15`) |
+| `DB_CONN_MAX_LIFETIME` | 單一資料庫連線的最長存活時間 (預設: `5m`)。時間格式；純整數視為分鐘 |
+| `DB_CONN_MAX_IDLE_TIME` | 單一資料庫連線的最長閒置時間 (預設: `2m`)。時間格式；純整數視為分鐘 |
+| `DB_CLEANUP_INTERVAL` | 清理過期 device session 的間隔 (預設: `24h`)。時間格式；純整數視為小時 |
 | `HTTP_ADDRESS` | 伺服器位址 (預設: `:80`) |
 | `OAUTH2_PROVIDER` | 服務供應商名稱 (`discord`, `github`, `google`, 或其他即為 `generic`) |
 | `OAUTH2_CLIENT_ID` | OAuth2 Client ID |
@@ -30,11 +35,13 @@
 | `OIDC_ISSUER_URL` | 啟用 OIDC discovery 模式：自動從 `{issuer}/.well-known/openid-configuration` 取得 auth/token/userinfo/revocation 端點。需搭配 `OAUTH2_CLIENT_ID`、`OAUTH2_CLIENT_SECRET`、`OAUTH2_REDIRECT_URL`；設定後優先於 `OAUTH2_PROVIDER`。 |
 | `OAUTH2_CLIENT_PKCE` | 設定為 `true` 讓用戶端自行持有 PKCE verifier（由 `/login` 回傳，呼叫 `/callback` 時須透過 `X-PKCE-Verifier` header 帶回）。預設為 `false`，即由伺服器內部管理 verifier — 詳見下方「登入流程」。 |
 | `REDIS_URL` | Redis 連線字串 (用於 OAuth `state` 儲存、device secret 快取，以及 `/callback` 與 `/refresh` 的跨實例去重；未設定時退回程序內實作，不適合多實例部署) |
-| `JWT_ACCESS_TOKEN_DURATION` | Access token 有效時長 (預設: `15m`)。接受 Go duration 格式如 `30m`、`12h`，或以整數天數表示如 `1d` |
+| `JWT_ACCESS_TOKEN_DURATION` | Access token 有效時長 (預設: `15m`)。時間格式，必須帶單位 |
 | `JWT_REFRESH_TOKEN_DURATION` | Refresh token 有效時長 (預設: `7d`)，格式同上。`refresh_token` cookie 會與 token 同時到期；每次呼叫 `/refresh` 都會發出新的 refresh token，因此持續使用中的 session 會不斷延長 |
 | `HTTP_MODE` | 設定為 `development` 以啟用開發功能 |
 | `ALLOW_REGISTRATION` | 設定為 `true` 以允許使用者註冊 |
 | `PASS_OAUTH_TOKEN` | 設定為 `true` 以將 OAuth 供應商權杖傳遞給用戶端 (詳見操作情境)。 |
+
+時間格式：由一或多段 `<整數><單位>` 組成，單位為 `d`、`h`、`m`、`s`（例如 `30m`、`7d`、`1d12h`）。格式錯誤時服務會在啟動階段直接失敗。
 
 ## 登入流程 (State 與 PKCE)
 

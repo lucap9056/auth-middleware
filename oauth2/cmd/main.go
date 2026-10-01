@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -17,40 +16,15 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/device"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/config"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"github.com/lucap9056/go-lifecycle/v2/lifecycle"
 	"github.com/lucap9056/go-lifecycle/v2/runner"
 )
-
-const (
-	EnvDatabaseURL        = "DATABASE_URL"
-	EnvHTTPAddress        = "HTTP_ADDRESS"
-	EnvOAuth2Provider     = "OAUTH2_PROVIDER"
-	EnvOAuth2ClientID     = "OAUTH2_CLIENT_ID"
-	EnvOAuth2ClientSecret = "OAUTH2_CLIENT_SECRET"
-	EnvOAuth2RedirectURL  = "OAUTH2_REDIRECT_URL"
-	EnvOAuth2AuthURL      = "OAUTH2_AUTH_URL"
-	EnvOAuth2TokenURL     = "OAUTH2_TOKEN_URL"
-	EnvOAuth2UserinfoURL  = "OAUTH2_USERINFO_URL"
-	EnvOAuth2RevokeURL    = "OAUTH2_REVOKE_URL"
-	EnvOAuth2Scopes       = "OAUTH2_SCOPES"
-	EnvOAuth2ClientPKCE   = "OAUTH2_CLIENT_PKCE"
-	EnvOIDCIssuerURL      = "OIDC_ISSUER_URL"
-	EnvHTTPMode           = "HTTP_MODE"
-	EnvAllowRegistration  = "ALLOW_REGISTRATION"
-	EnvPassOAuthToken     = "PASS_OAUTH_TOKEN"
-	EnvRedisURL           = "REDIS_URL"
-
-	DefaultHTTPAddress = ":80"
-	ModeDevelopment    = "development"
-)
-
-var mode = ModeDevelopment
 
 func main() {
 	if err := runner.Run(run); err != nil {
@@ -59,28 +33,35 @@ func main() {
 }
 
 func run(life *lifecycle.Coordinator) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	var db *database.Database
-	databaseUrl := os.Getenv(EnvDatabaseURL)
-	if databaseUrl != "" {
-		dbOptions := database.FromEnv()
-		var err error
-		db, err = database.NewDatabase(databaseUrl, dbOptions)
+	if cfg.Database != nil {
+		db, err = database.NewDatabase(cfg.Database.URL,
+			database.WithMaxOpenConns(cfg.Database.MaxOpenConns),
+			database.WithMaxIdleConns(cfg.Database.MaxIdleConns),
+			database.WithConnMaxLifetime(cfg.Database.ConnMaxLifetime),
+			database.WithConnMaxIdleTime(cfg.Database.ConnMaxIdleTime),
+			database.WithCleanupInterval(cfg.Database.CleanupInterval),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to open database: %w", err)
 		}
 		life.OnExit(func() { db.Close() })
 	}
 
-	jwtOptions := jwt.FromEnv()
-
-	redisURL := os.Getenv(EnvRedisURL)
-
-	redisClient, err := cache.NewRedisClient(redisURL)
-	if err != nil {
-		return fmt.Errorf("failed to connect to Redis: %w", err)
-	}
-	if redisClient != nil {
+	var redisClient *cache.RedisClient
+	var flightOptions []flight.Option
+	if cfg.Redis != nil {
+		redisClient, err = cache.NewRedisClient(cfg.Redis.URL)
+		if err != nil {
+			return fmt.Errorf("failed to connect to Redis: %w", err)
+		}
 		life.OnExit(redisClient.Close)
+		flightOptions = append(flightOptions, flight.WithRedis(cfg.Redis.URL, 0))
 	}
 
 	deviceCache, err := device.NewSecretCache(redisClient)
@@ -97,87 +78,17 @@ func run(life *lifecycle.Coordinator) error {
 		handlerDB = cachedDB
 	}
 
-	jwtManager := jwt.NewJWTManager(jwtDB, jwtOptions)
+	jwtManager := jwt.NewJWTManager(jwtDB,
+		jwt.WithAccessTokenDuration(cfg.JWT.AccessTokenDuration),
+		jwt.WithRefreshTokenDuration(cfg.JWT.RefreshTokenDuration),
+	)
 
-	httpAddress := os.Getenv(EnvHTTPAddress)
-	if httpAddress == "" {
-		httpAddress = DefaultHTTPAddress
+	oauth2Client, err := newOAuth2Client(cfg)
+	if err != nil {
+		return err
 	}
 
-	clientID := os.Getenv(EnvOAuth2ClientID)
-	clientSecret := os.Getenv(EnvOAuth2ClientSecret)
-	redirectURL := os.Getenv(EnvOAuth2RedirectURL)
-	httpMode := os.Getenv(EnvHTTPMode)
-
-	if httpMode != "" {
-		mode = httpMode
-	}
-
-	devMode := (mode == ModeDevelopment)
-
-	enableOAuth2 := clientID != "" && clientSecret != "" && redirectURL != ""
-	oidcIssuer := os.Getenv(EnvOIDCIssuerURL)
-
-	var oauth2Client login.OAuth2Client
-
-	switch {
-	case oidcIssuer != "" && !enableOAuth2:
-		return errors.New("OIDC_ISSUER_URL requires OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, and OAUTH2_REDIRECT_URL")
-	case oidcIssuer != "":
-		scopesStr := os.Getenv(EnvOAuth2Scopes)
-		scopes := strings.Split(scopesStr, ",")
-		for i := range scopes {
-			scopes[i] = strings.TrimSpace(scopes[i])
-		}
-
-		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer discoveryCancel()
-
-		oidcClient, err := oauthclient.NewOIDC(discoveryCtx, oauthclient.OIDCConfig{
-			IssuerURL:    oidcIssuer,
-			ClientID:     clientID,
-			ClientSecret: clientSecret,
-			RedirectURL:  redirectURL,
-			Scopes:       scopes,
-		})
-		if err != nil {
-			return fmt.Errorf("OIDC setup failed: %w", err)
-		}
-		oauth2Client = oidcClient
-		log.Printf("Starting OIDC server (Issuer: %s) on %s (Mode: %s)", oidcIssuer, httpAddress, mode)
-
-	case enableOAuth2:
-		authURL := os.Getenv(EnvOAuth2AuthURL)
-		tokenURL := os.Getenv(EnvOAuth2TokenURL)
-		userinfoURL := os.Getenv(EnvOAuth2UserinfoURL)
-		revokeURL := os.Getenv(EnvOAuth2RevokeURL)
-		scopesStr := os.Getenv(EnvOAuth2Scopes)
-		provider := os.Getenv(EnvOAuth2Provider)
-
-		if !providers.IsBuiltin(provider) && (authURL == "" || tokenURL == "" || userinfoURL == "") {
-			return errors.New("generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
-		}
-
-		scopes := strings.Split(scopesStr, ",")
-		for i := range scopes {
-			scopes[i] = strings.TrimSpace(scopes[i])
-		}
-		oauth2Client = oauthclient.New(oauthclient.Config{
-			Provider:     provider,
-			ClientID:     clientID,
-			ClientSecret: clientSecret,
-			RedirectURL:  redirectURL,
-			AuthURL:      authURL,
-			TokenURL:     tokenURL,
-			UserinfoURL:  userinfoURL,
-			RevokeURL:    revokeURL,
-			Scopes:       scopes,
-		})
-
-		log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider, httpAddress, mode)
-	}
-
-	flightGroup, err := flight.New(flight.WithRedis(redisURL, 0))
+	flightGroup, err := flight.New(flightOptions...)
 	if err != nil {
 		return fmt.Errorf("failed to create flight group: %w", err)
 	}
@@ -188,19 +99,11 @@ func run(life *lifecycle.Coordinator) error {
 		return fmt.Errorf("failed to create state cache: %w", err)
 	}
 
-	var authOptions []options.Option
-	if devMode {
-		authOptions = append(authOptions, options.WithDevMode(true))
-	}
-	if os.Getenv(EnvAllowRegistration) == "true" {
-		authOptions = append(authOptions, options.WithAllowRegistration(true))
-	}
-	if os.Getenv(EnvPassOAuthToken) == "true" {
-		authOptions = append(authOptions, options.WithPassOAuthToken(true))
-	}
-
-	if os.Getenv(EnvOAuth2ClientPKCE) == "true" {
-		authOptions = append(authOptions, options.WithClientPKCE(true))
+	authOptions := []options.Option{
+		options.WithDevMode(cfg.HTTP.DevMode()),
+		options.WithAllowRegistration(cfg.Auth.AllowRegistration),
+		options.WithPassOAuthToken(cfg.Auth.PassOAuthToken),
+		options.WithClientPKCE(cfg.OAuth2 != nil && cfg.OAuth2.Client.PKCE),
 	}
 
 	mux := http.NewServeMux()
@@ -220,9 +123,9 @@ func run(life *lifecycle.Coordinator) error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	listener, err := createListener(httpAddress)
+	listener, err := createListener(cfg.HTTP.Address)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", httpAddress, err)
+		return fmt.Errorf("failed to listen on %s: %w", cfg.HTTP.Address, err)
 	}
 	life.OnExit(func() { listener.Close() })
 
@@ -240,6 +143,46 @@ func run(life *lifecycle.Coordinator) error {
 	})
 
 	return nil
+}
+
+func newOAuth2Client(cfg *config.Config) (login.OAuth2Client, error) {
+	oauth2Config := cfg.OAuth2
+	if oauth2Config == nil {
+		return nil, nil
+	}
+
+	if oauth2Config.OIDC != nil {
+		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer discoveryCancel()
+
+		oidcClient, err := oauthclient.NewOIDC(discoveryCtx, oauthclient.OIDCConfig{
+			IssuerURL:    oauth2Config.OIDC.IssuerURL,
+			ClientID:     oauth2Config.Client.ID,
+			ClientSecret: oauth2Config.Client.Secret,
+			RedirectURL:  oauth2Config.Client.RedirectURL,
+			Scopes:       oauth2Config.Scopes,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("OIDC setup failed: %w", err)
+		}
+		log.Printf("Starting OIDC server (Issuer: %s) on %s (Mode: %s)", oauth2Config.OIDC.IssuerURL, cfg.HTTP.Address, cfg.HTTP.Mode)
+		return oidcClient, nil
+	}
+
+	provider := oauth2Config.Provider
+	oauth2Client := oauthclient.New(oauthclient.Config{
+		Provider:     provider.Name,
+		ClientID:     oauth2Config.Client.ID,
+		ClientSecret: oauth2Config.Client.Secret,
+		RedirectURL:  oauth2Config.Client.RedirectURL,
+		AuthURL:      provider.AuthURL,
+		TokenURL:     provider.TokenURL,
+		UserinfoURL:  provider.UserinfoURL,
+		RevokeURL:    provider.RevokeURL,
+		Scopes:       oauth2Config.Scopes,
+	})
+	log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider.Name, cfg.HTTP.Address, cfg.HTTP.Mode)
+	return oauth2Client, nil
 }
 
 func createListener(addr string) (net.Listener, error) {
