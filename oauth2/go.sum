@@ -26,10 +26,8 @@ github.com/lucap9056/auth-middleware/database v1.2.0 h1:mHS+ZQPK6QmtGqjTDVH6TJnL
 github.com/lucap9056/auth-middleware/database v1.2.0/go.mod h1:MFpsImNPkbTG73vCvBfpP42qEHDtlyAeiCtQAV5r6yk=
 github.com/lucap9056/auth-middleware/jwt v1.0.0 h1:kadk+aXJEuxTqV/wMCDw9mYmg2O7iEkcbCIoGvnDTtg=
 github.com/lucap9056/auth-middleware/jwt v1.0.0/go.mod h1:6fF/vOTGU3szn/IfycuPNel2keAoSKqOfNrcDr6WY6M=
-github.com/lucap9056/go-envfile v1.1.0 h1:cc2KGPhqoZIG1UgN8s3VvtcJzbuSxkhMjC5i61ujvfs=
-github.com/lucap9056/go-envfile v1.1.0/go.mod h1:5rifasJVs+xLsGmteEAhUFBBSi7UWnoPveTm0nAE3SM=
-github.com/lucap9056/go-lifecycle v1.2.0 h1:EjNaHFHfPPJQzHFP45jO3WcABGr53acsrrhkmTpXlro=
-github.com/lucap9056/go-lifecycle v1.2.0/go.mod h1:rNny6T4zFnRTf0/tAZFMAy0vAJHrDwjmpQAF7Q0HSZ4=
+github.com/lucap9056/go-lifecycle/v2 v2.0.0 h1:wbqPYq1FXqutbccCsFmahyBa6hts3er7hPavUZR6LNY=
+github.com/lucap9056/go-lifecycle/v2 v2.0.0/go.mod h1:Ot6jcCAedq/W42oioH7pXBUFkopR2+hzhYtrwY053oU=
 github.com/maypok86/otter/v2 v2.3.0 h1:8H8AVVFUSzJwIegKwv1uF5aGitTY+AIrtktg7OcLs8w=
 github.com/maypok86/otter/v2 v2.3.0/go.mod h1:XgIdlpmL6jYz882/CAx1E4C1ukfgDKSaw4mWq59+7l8=
 github.com/onsi/gomega v1.42.1 h1:iN1rCUX+44NZ1Dc97MPoeFYbFR0vh8zxoxMFwKdyZ6I=

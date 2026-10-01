@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -21,8 +23,8 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
-	"github.com/lucap9056/go-envfile/envfile"
-	"github.com/lucap9056/go-lifecycle/lifecycle"
+	"github.com/lucap9056/go-lifecycle/v2/lifecycle"
+	"github.com/lucap9056/go-lifecycle/v2/runner"
 )
 
 const (
@@ -51,9 +53,12 @@ const (
 var mode = ModeDevelopment
 
 func main() {
-	envfile.Load()
-	life := lifecycle.New()
+	if err := runner.Run(run); err != nil {
+		log.Fatalln(err)
+	}
+}
 
+func run(life *lifecycle.Coordinator) error {
 	var db *database.Database
 	databaseUrl := os.Getenv(EnvDatabaseURL)
 	if databaseUrl != "" {
@@ -61,9 +66,9 @@ func main() {
 		var err error
 		db, err = database.NewDatabase(databaseUrl, dbOptions)
 		if err != nil {
-			log.Fatalf("Failed to open database: %v", err)
+			return fmt.Errorf("failed to open database: %w", err)
 		}
-		defer db.Close()
+		life.OnExit(func() { db.Close() })
 	}
 
 	jwtOptions := jwt.FromEnv()
@@ -72,17 +77,17 @@ func main() {
 
 	redisClient, err := cache.NewRedisClient(redisURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 	if redisClient != nil {
-		defer redisClient.Close()
+		life.OnExit(redisClient.Close)
 	}
 
 	deviceCache, err := device.NewSecretCache(redisClient)
 	if err != nil {
-		log.Fatalf("Failed to create device secret cache: %v", err)
+		return fmt.Errorf("failed to create device secret cache: %w", err)
 	}
-	defer deviceCache.Close()
+	life.OnExit(func() { deviceCache.Close() })
 
 	var jwtDB jwt.Database
 	var handlerDB options.DB
@@ -117,7 +122,7 @@ func main() {
 
 	switch {
 	case oidcIssuer != "" && !enableOAuth2:
-		log.Fatalln("OIDC_ISSUER_URL requires OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, and OAUTH2_REDIRECT_URL")
+		return errors.New("OIDC_ISSUER_URL requires OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, and OAUTH2_REDIRECT_URL")
 	case oidcIssuer != "":
 		scopesStr := os.Getenv(EnvOAuth2Scopes)
 		scopes := strings.Split(scopesStr, ",")
@@ -136,7 +141,7 @@ func main() {
 			Scopes:       scopes,
 		})
 		if err != nil {
-			log.Fatalf("OIDC setup failed: %v", err)
+			return fmt.Errorf("OIDC setup failed: %w", err)
 		}
 		oauth2Client = oidcClient
 		log.Printf("Starting OIDC server (Issuer: %s) on %s (Mode: %s)", oidcIssuer, httpAddress, mode)
@@ -150,7 +155,7 @@ func main() {
 		provider := os.Getenv(EnvOAuth2Provider)
 
 		if !providers.IsBuiltin(provider) && (authURL == "" || tokenURL == "" || userinfoURL == "") {
-			log.Fatalln("Generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
+			return errors.New("generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
 		}
 
 		scopes := strings.Split(scopesStr, ",")
@@ -174,13 +179,13 @@ func main() {
 
 	flightGroup, err := flight.New(flight.WithRedis(redisURL, 0))
 	if err != nil {
-		log.Fatalf("Failed to create flight group: %v", err)
+		return fmt.Errorf("failed to create flight group: %w", err)
 	}
-	defer flightGroup.Close()
+	life.OnExit(flightGroup.Close)
 
 	stateCache, err := state.NewCache(redisClient)
 	if err != nil {
-		log.Fatalf("Failed to create state cache: %v", err)
+		return fmt.Errorf("failed to create state cache: %w", err)
 	}
 
 	var authOptions []options.Option
@@ -217,9 +222,9 @@ func main() {
 
 	listener, err := createListener(httpAddress)
 	if err != nil {
-		log.Fatalln("")
+		return fmt.Errorf("failed to listen on %s: %w", httpAddress, err)
 	}
-	defer listener.Close()
+	life.OnExit(func() { listener.Close() })
 
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -234,7 +239,7 @@ func main() {
 		server.Shutdown(ctx)
 	})
 
-	life.Wait()
+	return nil
 }
 
 func createListener(addr string) (net.Listener, error) {
