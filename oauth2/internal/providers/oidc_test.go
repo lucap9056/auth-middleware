@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -243,10 +244,11 @@ func TestParseIDTokenClaims_NoExpiry(t *testing.T) {
 
 func TestOIDCProvider_GetUser_ViaIDToken(t *testing.T) {
 	idToken := makeIDToken(t, map[string]any{
-		"sub":   "oidc-user-1",
-		"email": "oidc@example.com",
-		"name":  "OIDC User",
-		"exp":   time.Now().Add(time.Hour).Unix(),
+		"sub":            "oidc-user-1",
+		"email":          "oidc@example.com",
+		"email_verified": true,
+		"name":           "OIDC User",
+		"exp":            time.Now().Add(time.Hour).Unix(),
 	})
 	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
 
@@ -269,9 +271,10 @@ func TestOIDCProvider_GetUser_ViaIDToken(t *testing.T) {
 func TestOIDCProvider_GetUser_UserinfoFallback(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(idTokenClaims{
-			Sub:   "oidc-user-2",
-			Email: "fallback@example.com",
-			Name:  "Fallback User",
+			Sub:           "oidc-user-2",
+			Email:         "fallback@example.com",
+			EmailVerified: true,
+			Name:          "Fallback User",
 		})
 	}))
 	defer srv.Close()
@@ -301,8 +304,9 @@ func TestOIDCProvider_GetUser_IDTokenMissingEmail_FallsBackToUserinfo(t *testing
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		json.NewEncoder(w).Encode(idTokenClaims{
-			Sub:   "oidc-user-3",
-			Email: "fromendpoint@example.com",
+			Sub:           "oidc-user-3",
+			Email:         "fromendpoint@example.com",
+			EmailVerified: true,
 		})
 	}))
 	defer srv.Close()
@@ -316,6 +320,47 @@ func TestOIDCProvider_GetUser_IDTokenMissingEmail_FallsBackToUserinfo(t *testing
 	}
 	if user.Email != "fromendpoint@example.com" {
 		t.Errorf("Email: got %q, want %q", user.Email, "fromendpoint@example.com")
+	}
+}
+
+func TestOIDCProvider_GetUser_UnverifiedEmailRejected(t *testing.T) {
+	idToken := makeIDToken(t, map[string]any{
+		"sub":            "oidc-user-4",
+		"email":          "unverified@example.com",
+		"email_verified": false,
+		"exp":            time.Now().Add(time.Hour).Unix(),
+	})
+	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(idTokenClaims{Sub: "oidc-user-4", Email: "unverified@example.com"})
+	}))
+	defer srv.Close()
+
+	discovery := &OIDCDiscovery{UserinfoEndpoint: srv.URL}
+	provider := NewOIDCProvider(newTestConfig(srv.URL), discovery)
+
+	_, err := provider.GetUser(testContextWithClient(srv.URL), token)
+	if !errors.Is(err, ErrUnverifiedEmail) {
+		t.Fatalf("got error %v, want %v", err, ErrUnverifiedEmail)
+	}
+}
+
+func TestOIDCProvider_GetUser_UnverifiedEmailAllowed(t *testing.T) {
+	idToken := makeIDToken(t, map[string]any{
+		"sub":   "oidc-user-5",
+		"email": "unverified@example.com",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
+
+	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{}, WithAllowUnverifiedEmail(true))
+	user, err := provider.GetUser(context.Background(), token)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user.Email != "unverified@example.com" {
+		t.Errorf("Email: got %q, want %q", user.Email, "unverified@example.com")
 	}
 }
 

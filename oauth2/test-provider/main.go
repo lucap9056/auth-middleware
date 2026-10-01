@@ -164,22 +164,24 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 
 func handleUserinfo(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{
-		"sub":   userSub,
-		"email": userEmail,
-		"name":  userName,
+		"sub":            userSub,
+		"email":          userEmail,
+		"email_verified": true,
+		"name":           userName,
 	})
 }
 
 func buildIDToken() string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
 	payload, _ := json.Marshal(map[string]any{
-		"iss":   issuer,
-		"sub":   userSub,
-		"email": userEmail,
-		"name":  userName,
-		"aud":   "oauth2-middleware",
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(time.Hour).Unix(),
+		"iss":            issuer,
+		"sub":            userSub,
+		"email":          userEmail,
+		"email_verified": true,
+		"name":           userName,
+		"aud":            "oauth2-middleware",
+		"iat":            time.Now().Unix(),
+		"exp":            time.Now().Add(time.Hour).Unix(),
 	})
 	return header + "." + base64.RawURLEncoding.EncodeToString(payload) + "."
 }

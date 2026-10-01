@@ -39,13 +39,30 @@ func (a *audienceClaim) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type flexibleBool bool
+
+func (b *flexibleBool) UnmarshalJSON(data []byte) error {
+	var boolean bool
+	if err := json.Unmarshal(data, &boolean); err == nil {
+		*b = flexibleBool(boolean)
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	*b = str == "true"
+	return nil
+}
+
 type idTokenClaims struct {
-	Sub   string        `json:"sub"`
-	Email string        `json:"email"`
-	Name  string        `json:"name"`
-	Iss   string        `json:"iss"`
-	Aud   audienceClaim `json:"aud"`
-	Exp   int64         `json:"exp"`
+	Sub           string        `json:"sub"`
+	Email         string        `json:"email"`
+	EmailVerified flexibleBool  `json:"email_verified"`
+	Name          string        `json:"name"`
+	Iss           string        `json:"iss"`
+	Aud           audienceClaim `json:"aud"`
+	Exp           int64         `json:"exp"`
 }
 
 // FetchDiscovery retrieves the OIDC discovery document from the issuer's
@@ -113,12 +130,13 @@ func tryFetchDiscovery(ctx context.Context, discoveryURL string) (body []byte, r
 
 type OIDCProvider struct {
 	config     *oauth2.Config
+	options    Options
 	discovery  *OIDCDiscovery
 	httpClient *http.Client
 }
 
-func NewOIDCProvider(config *oauth2.Config, discovery *OIDCDiscovery) *OIDCProvider {
-	return &OIDCProvider{config: config, discovery: discovery, httpClient: http.DefaultClient}
+func NewOIDCProvider(config *oauth2.Config, discovery *OIDCDiscovery, opts ...Option) *OIDCProvider {
+	return &OIDCProvider{config: config, options: newOptions(opts), discovery: discovery, httpClient: http.DefaultClient}
 }
 
 // GetUser extracts user info from the id_token JWT payload when available,
@@ -126,7 +144,7 @@ func NewOIDCProvider(config *oauth2.Config, discovery *OIDCDiscovery) *OIDCProvi
 func (p *OIDCProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
 	if idToken, ok := token.Extra("id_token").(string); ok && idToken != "" {
 		claims, err := parseIDTokenClaims(idToken)
-		if err == nil && claims.Sub != "" && claims.Email != "" {
+		if err == nil && claims.Sub != "" && p.options.checkEmail(claims.Email, bool(claims.EmailVerified)) == nil {
 			return &Userinfo{ID: claims.Sub, Email: claims.Email, Name: claims.Name}, nil
 		}
 	}
@@ -155,8 +173,11 @@ func (p *OIDCProvider) fetchUserinfo(ctx context.Context, token *oauth2.Token) (
 		return nil, fmt.Errorf("failed to decode userinfo: %w", err)
 	}
 
-	if claims.Sub == "" || claims.Email == "" {
-		return nil, fmt.Errorf("userinfo response missing required claims (sub, email)")
+	if claims.Sub == "" {
+		return nil, fmt.Errorf("userinfo response missing required claim: sub")
+	}
+	if err := p.options.checkEmail(claims.Email, bool(claims.EmailVerified)); err != nil {
+		return nil, err
 	}
 
 	return &Userinfo{ID: claims.Sub, Email: claims.Email, Name: claims.Name}, nil
