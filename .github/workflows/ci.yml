@@ -1,0 +1,203 @@
+name: CI
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      database: ${{ steps.filter.outputs.database }}
+      jwt: ${{ steps.filter.outputs.jwt }}
+      oauth2: ${{ steps.filter.outputs.oauth2 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed modules
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            database:
+              - "database/**"
+              - ".github/workflows/ci.yml"
+            jwt:
+              - "jwt/**"
+              - ".github/workflows/ci.yml"
+            oauth2:
+              - "oauth2/**"
+              - ".github/workflows/ci.yml"
+
+  database:
+    needs: changes
+    if: needs.changes.outputs.database == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: database
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: database/go.mod
+          cache-dependency-path: database/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ${{ github.event_name == 'pull_request' && '-race' || '' }} ./...
+
+  jwt:
+    needs: changes
+    if: needs.changes.outputs.jwt == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jwt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: jwt/go.mod
+          cache-dependency-path: jwt/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ${{ github.event_name == 'pull_request' && '-race' || '' }} ./...
+
+  oauth2-unit:
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.outputs.oauth2 == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oauth2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: oauth2/go.mod
+          cache-dependency-path: oauth2/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./internal/... ./tests/
+
+  oauth2-integration:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.oauth2 == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oauth2
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_REDIS_URL: redis://localhost:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: oauth2/go.mod
+          cache-dependency-path: oauth2/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./internal/... ./tests/
+
+  oauth2-e2e:
+    needs: oauth2-integration
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oauth2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: oauth2/go.mod
+          cache-dependency-path: oauth2/go.sum
+
+      - name: Start stack
+        run: docker compose up --build --detach --wait
+
+      - name: Wait for middleware
+        run: |
+          for _ in $(seq 1 30); do
+            if curl --silent --fail http://localhost:8080/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "middleware did not become healthy" >&2
+          exit 1
+
+      - name: Run E2E tests
+        run: go test -v ./tests/e2e/
+
+      - name: Dump logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down --volumes
+
+  ci-required:
+    if: always()
+    needs:
+      - changes
+      - database
+      - jwt
+      - oauth2-unit
+      - oauth2-integration
+      - oauth2-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}; then
+            echo "one or more required jobs failed" >&2
+            exit 1
+          fi
