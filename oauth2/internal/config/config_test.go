@@ -14,7 +14,7 @@ var allEnvKeys = []string{
 	EnvOAuth2Provider, EnvOAuth2ClientID, EnvOAuth2ClientSecret, EnvOAuth2RedirectURL,
 	EnvOAuth2AuthURL, EnvOAuth2TokenURL, EnvOAuth2UserinfoURL, EnvOAuth2RevokeURL,
 	EnvOAuth2Scopes, EnvOAuth2ClientPKCE, EnvOIDCIssuerURL,
-	EnvAllowRegistration, EnvPassOAuthToken,
+	EnvAllowRegistration, EnvPassOAuthToken, EnvAllowUnverifiedEmail,
 }
 
 func setEnv(t *testing.T, values map[string]string) {
@@ -129,15 +129,16 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 
 func TestLoad_NestedValues(t *testing.T) {
 	setEnv(t, setClientEnv(map[string]string{
-		EnvHTTPAddress:       "unix:///tmp/auth.sock",
-		EnvHTTPMode:          "production",
-		EnvDatabaseURL:       "postgres://localhost/auth",
-		EnvRedisURL:          "redis://localhost:6379",
-		EnvOAuth2Provider:    "github",
-		EnvOAuth2Scopes:      " openid , ,email,",
-		EnvOAuth2ClientPKCE:  "true",
-		EnvAllowRegistration: "true",
-		EnvPassOAuthToken:    "false",
+		EnvHTTPAddress:          "unix:///tmp/auth.sock",
+		EnvHTTPMode:             "production",
+		EnvDatabaseURL:          "postgres://localhost/auth",
+		EnvRedisURL:             "redis://localhost:6379",
+		EnvOAuth2Provider:       "github",
+		EnvOAuth2Scopes:         " openid , ,email,",
+		EnvOAuth2ClientPKCE:     "true",
+		EnvAllowRegistration:    "true",
+		EnvPassOAuthToken:       "false",
+		EnvAllowUnverifiedEmail: "true",
 	}))
 
 	cfg, err := Load()
@@ -165,7 +166,7 @@ func TestLoad_NestedValues(t *testing.T) {
 	if !slices.Equal(cfg.OAuth2.Scopes, []string{"openid", "email"}) {
 		t.Errorf("Scopes: got %q, want [openid email]", cfg.OAuth2.Scopes)
 	}
-	expectedAuth := Auth{AllowRegistration: true, PassOAuthToken: false}
+	expectedAuth := Auth{AllowRegistration: true, PassOAuthToken: false, AllowUnverifiedEmail: true}
 	if *cfg.Auth != expectedAuth {
 		t.Errorf("Auth: got %+v, want %+v", cfg.Auth, expectedAuth)
 	}

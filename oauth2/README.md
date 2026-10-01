@@ -39,6 +39,7 @@ This module has built-in support for the following OAuth2 providers:
 | `JWT_REFRESH_TOKEN_DURATION` | Refresh token lifetime (default: `7d`); same format as above. The `refresh_token` cookie expires together with the token. Each `/refresh` issues a new refresh token, so active sessions keep extending |
 | `HTTP_MODE` | Set to `development` for dev features |
 | `ALLOW_REGISTRATION` | Set to `true` to enable user registration |
+| `ALLOW_UNVERIFIED_EMAIL` | Set to `true` to accept unverified emails. By default `email_verified` is checked |
 | `PASS_OAUTH_TOKEN` | Set to `true` to pass OAuth provider tokens to the client (see Operational Scenarios). |
 
 Duration format: one or more `<integer><unit>` segments, where the unit is `d`, `h`, `m`, or `s` (e.g. `30m`, `7d`, `1d12h`). Invalid values stop the server at startup.
