@@ -37,6 +37,19 @@ accessToken, err := manager.GenerateAccess(refreshToken, username)
 claims, err := manager.VerifyAccess(accessToken)
 ```
 
+## Token Duration
+
+| Option | Environment variable (via `FromEnv`) | Default |
+| :--- | :--- | :--- |
+| `WithAccessTokenDuration(d)` | `JWT_ACCESS_TOKEN_DURATION` | `15m` |
+| `WithRefreshTokenDuration(d)` | `JWT_REFRESH_TOKEN_DURATION` | `7d` |
+
+Environment values accept Go durations (`30m`, `12h`) or whole days (`7d`).
+
+```go
+manager := jwt.NewJWTManager(db, jwt.FromEnv())
+```
+
 ## Testing
 
 Run the tests within the module directory:

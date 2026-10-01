@@ -37,6 +37,19 @@ accessToken, err := manager.GenerateAccess(refreshToken, username)
 claims, err := manager.VerifyAccess(accessToken)
 ```
 
+## Token 有效時長
+
+| Option | 環境變數 (透過 `FromEnv`) | 預設值 |
+| :--- | :--- | :--- |
+| `WithAccessTokenDuration(d)` | `JWT_ACCESS_TOKEN_DURATION` | `15m` |
+| `WithRefreshTokenDuration(d)` | `JWT_REFRESH_TOKEN_DURATION` | `7d` |
+
+環境變數接受 Go duration 格式（`30m`、`12h`）或整數天數（`7d`）。
+
+```go
+manager := jwt.NewJWTManager(db, jwt.FromEnv())
+```
+
 ## 測試
 
 在模組目錄中執行測試：

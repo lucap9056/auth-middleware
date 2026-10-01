@@ -30,6 +30,8 @@ This module has built-in support for the following OAuth2 providers:
 | `OIDC_ISSUER_URL` | Enables OIDC discovery mode: auto-configures the auth/token/userinfo/revocation endpoints from `{issuer}/.well-known/openid-configuration`. Requires `OAUTH2_CLIENT_ID`, `OAUTH2_CLIENT_SECRET`, and `OAUTH2_REDIRECT_URL`; takes precedence over `OAUTH2_PROVIDER`. |
 | `OAUTH2_CLIENT_PKCE` | Set to `true` to have the client hold the PKCE verifier itself (returned by `/login`, must be sent back via the `X-PKCE-Verifier` header on `/callback`). Defaults to `false`, meaning the server manages the verifier internally — see Login Flow below. |
 | `REDIS_URL` | Redis connection string (used for OAuth `state` storage, device secret caching, and cross-instance deduplication of `/callback` and `/refresh`; falls back to in-process equivalents if unset — not suitable for multi-instance deployments) |
+| `JWT_ACCESS_TOKEN_DURATION` | Access token lifetime (default: `15m`). Accepts Go durations such as `30m` or `12h`, or whole days such as `1d` |
+| `JWT_REFRESH_TOKEN_DURATION` | Refresh token lifetime (default: `7d`); same format as above. The `refresh_token` cookie expires together with the token. Each `/refresh` issues a new refresh token, so active sessions keep extending |
 | `HTTP_MODE` | Set to `development` for dev features |
 | `ALLOW_REGISTRATION` | Set to `true` to enable user registration |
 | `PASS_OAUTH_TOKEN` | Set to `true` to pass OAuth provider tokens to the client (see Operational Scenarios). |
