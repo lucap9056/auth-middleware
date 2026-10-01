@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 
 	"golang.org/x/oauth2"
 )
@@ -10,6 +11,41 @@ type Userinfo struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+}
+
+var (
+	ErrMissingEmail    = errors.New("provider returned no email")
+	ErrUnverifiedEmail = errors.New("provider email is not verified")
+)
+
+type Options struct {
+	AllowUnverifiedEmail bool
+}
+
+type Option func(*Options)
+
+func WithAllowUnverifiedEmail(allowed bool) Option {
+	return func(o *Options) {
+		o.AllowUnverifiedEmail = allowed
+	}
+}
+
+func newOptions(opts []Option) Options {
+	var o Options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
+}
+
+func (o Options) checkEmail(email string, verified bool) error {
+	if email == "" {
+		return ErrMissingEmail
+	}
+	if !verified && !o.AllowUnverifiedEmail {
+		return ErrUnverifiedEmail
+	}
+	return nil
 }
 
 type Provider interface {
@@ -32,15 +68,15 @@ func IsBuiltin(name string) bool {
 	return false
 }
 
-func New(name string, config *oauth2.Config, userinfoURL, revokeURL string) Provider {
+func New(name string, config *oauth2.Config, userinfoURL, revokeURL string, opts ...Option) Provider {
 	switch name {
 	case DiscordName:
-		return NewDiscordProvider(config)
+		return NewDiscordProvider(config, opts...)
 	case GitHubName:
-		return NewGitHubProvider(config)
+		return NewGitHubProvider(config, opts...)
 	case GoogleName:
-		return NewGoogleProvider(config)
+		return NewGoogleProvider(config, opts...)
 	default:
-		return NewGenericProvider(config, userinfoURL, revokeURL)
+		return NewGenericProvider(config, userinfoURL, revokeURL, opts...)
 	}
 }

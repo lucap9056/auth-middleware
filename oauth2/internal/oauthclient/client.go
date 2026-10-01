@@ -36,7 +36,7 @@ type Client struct {
 	provider providers.Provider
 }
 
-func New(cfg Config) *Client {
+func New(cfg Config, opts ...providers.Option) *Client {
 	config := &oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
@@ -48,7 +48,7 @@ func New(cfg Config) *Client {
 		},
 	}
 
-	provider := providers.New(cfg.Provider, config, cfg.UserinfoURL, cfg.RevokeURL)
+	provider := providers.New(cfg.Provider, config, cfg.UserinfoURL, cfg.RevokeURL, opts...)
 
 	warmTokenEndpoint(config.Endpoint.TokenURL)
 
@@ -61,7 +61,7 @@ func New(cfg Config) *Client {
 // NewOIDC builds a Client using OIDC discovery. It fetches the provider's
 // well-known configuration document and auto-populates all endpoints.
 // The "openid" scope is automatically added if not already present.
-func NewOIDC(ctx context.Context, cfg OIDCConfig) (*Client, error) {
+func NewOIDC(ctx context.Context, cfg OIDCConfig, opts ...providers.Option) (*Client, error) {
 	discovery, err := providers.FetchDiscovery(ctx, cfg.IssuerURL)
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig) (*Client, error) {
 
 	return &Client{
 		config:   config,
-		provider: providers.NewOIDCProvider(config, discovery),
+		provider: providers.NewOIDCProvider(config, discovery, opts...),
 	}, nil
 }
 
