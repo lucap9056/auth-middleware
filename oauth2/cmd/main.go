@@ -22,6 +22,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"github.com/lucap9056/go-lifecycle/v2/lifecycle"
 	"github.com/lucap9056/go-lifecycle/v2/runner"
 )
@@ -151,6 +152,10 @@ func newOAuth2Client(cfg *config.Config) (login.OAuth2Client, error) {
 		return nil, nil
 	}
 
+	providerOptions := []providers.Option{
+		providers.WithAllowUnverifiedEmail(cfg.Auth.AllowUnverifiedEmail),
+	}
+
 	if oauth2Config.OIDC != nil {
 		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer discoveryCancel()
@@ -161,7 +166,7 @@ func newOAuth2Client(cfg *config.Config) (login.OAuth2Client, error) {
 			ClientSecret: oauth2Config.Client.Secret,
 			RedirectURL:  oauth2Config.Client.RedirectURL,
 			Scopes:       oauth2Config.Scopes,
-		})
+		}, providerOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("OIDC setup failed: %w", err)
 		}
@@ -180,7 +185,7 @@ func newOAuth2Client(cfg *config.Config) (login.OAuth2Client, error) {
 		UserinfoURL:  provider.UserinfoURL,
 		RevokeURL:    provider.RevokeURL,
 		Scopes:       oauth2Config.Scopes,
-	})
+	}, providerOptions...)
 	log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider.Name, cfg.HTTP.Address, cfg.HTTP.Mode)
 	return oauth2Client, nil
 }

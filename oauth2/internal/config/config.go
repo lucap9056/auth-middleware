@@ -12,30 +12,31 @@ import (
 )
 
 const (
-	EnvHTTPAddress        = "HTTP_ADDRESS"
-	EnvHTTPMode           = "HTTP_MODE"
-	EnvDatabaseURL        = "DATABASE_URL"
-	EnvDBMaxOpenConns     = "DB_MAX_OPEN_CONNS"
-	EnvDBMaxIdleConns     = "DB_MAX_IDLE_CONNS"
-	EnvDBConnMaxLifetime  = "DB_CONN_MAX_LIFETIME"
-	EnvDBConnMaxIdleTime  = "DB_CONN_MAX_IDLE_TIME"
-	EnvDBCleanupInterval  = "DB_CLEANUP_INTERVAL"
-	EnvJWTAccessDuration  = "JWT_ACCESS_TOKEN_DURATION"
-	EnvJWTRefreshDuration = "JWT_REFRESH_TOKEN_DURATION"
-	EnvRedisURL           = "REDIS_URL"
-	EnvOAuth2Provider     = "OAUTH2_PROVIDER"
-	EnvOAuth2ClientID     = "OAUTH2_CLIENT_ID"
-	EnvOAuth2ClientSecret = "OAUTH2_CLIENT_SECRET"
-	EnvOAuth2RedirectURL  = "OAUTH2_REDIRECT_URL"
-	EnvOAuth2AuthURL      = "OAUTH2_AUTH_URL"
-	EnvOAuth2TokenURL     = "OAUTH2_TOKEN_URL"
-	EnvOAuth2UserinfoURL  = "OAUTH2_USERINFO_URL"
-	EnvOAuth2RevokeURL    = "OAUTH2_REVOKE_URL"
-	EnvOAuth2Scopes       = "OAUTH2_SCOPES"
-	EnvOAuth2ClientPKCE   = "OAUTH2_CLIENT_PKCE"
-	EnvOIDCIssuerURL      = "OIDC_ISSUER_URL"
-	EnvAllowRegistration  = "ALLOW_REGISTRATION"
-	EnvPassOAuthToken     = "PASS_OAUTH_TOKEN"
+	EnvHTTPAddress          = "HTTP_ADDRESS"
+	EnvHTTPMode             = "HTTP_MODE"
+	EnvDatabaseURL          = "DATABASE_URL"
+	EnvDBMaxOpenConns       = "DB_MAX_OPEN_CONNS"
+	EnvDBMaxIdleConns       = "DB_MAX_IDLE_CONNS"
+	EnvDBConnMaxLifetime    = "DB_CONN_MAX_LIFETIME"
+	EnvDBConnMaxIdleTime    = "DB_CONN_MAX_IDLE_TIME"
+	EnvDBCleanupInterval    = "DB_CLEANUP_INTERVAL"
+	EnvJWTAccessDuration    = "JWT_ACCESS_TOKEN_DURATION"
+	EnvJWTRefreshDuration   = "JWT_REFRESH_TOKEN_DURATION"
+	EnvRedisURL             = "REDIS_URL"
+	EnvOAuth2Provider       = "OAUTH2_PROVIDER"
+	EnvOAuth2ClientID       = "OAUTH2_CLIENT_ID"
+	EnvOAuth2ClientSecret   = "OAUTH2_CLIENT_SECRET"
+	EnvOAuth2RedirectURL    = "OAUTH2_REDIRECT_URL"
+	EnvOAuth2AuthURL        = "OAUTH2_AUTH_URL"
+	EnvOAuth2TokenURL       = "OAUTH2_TOKEN_URL"
+	EnvOAuth2UserinfoURL    = "OAUTH2_USERINFO_URL"
+	EnvOAuth2RevokeURL      = "OAUTH2_REVOKE_URL"
+	EnvOAuth2Scopes         = "OAUTH2_SCOPES"
+	EnvOAuth2ClientPKCE     = "OAUTH2_CLIENT_PKCE"
+	EnvOIDCIssuerURL        = "OIDC_ISSUER_URL"
+	EnvAllowRegistration    = "ALLOW_REGISTRATION"
+	EnvPassOAuthToken       = "PASS_OAUTH_TOKEN"
+	EnvAllowUnverifiedEmail = "ALLOW_UNVERIFIED_EMAIL"
 
 	DefaultHTTPAddress = ":80"
 	ModeDevelopment    = "development"
@@ -119,8 +120,9 @@ type Provider struct {
 }
 
 type Auth struct {
-	AllowRegistration bool
-	PassOAuthToken    bool
+	AllowRegistration    bool
+	PassOAuthToken       bool
+	AllowUnverifiedEmail bool
 }
 
 func Load() (*Config, error) {
@@ -135,8 +137,9 @@ func Load() (*Config, error) {
 		Redis:    loadRedis(),
 		OAuth2:   loadOAuth2(env),
 		Auth: &Auth{
-			AllowRegistration: isTrue(EnvAllowRegistration),
-			PassOAuthToken:    isTrue(EnvPassOAuthToken),
+			AllowRegistration:    isTrue(EnvAllowRegistration),
+			PassOAuthToken:       isTrue(EnvPassOAuthToken),
+			AllowUnverifiedEmail: isTrue(EnvAllowUnverifiedEmail),
 		},
 	}
 

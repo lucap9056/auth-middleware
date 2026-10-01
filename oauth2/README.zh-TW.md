@@ -39,6 +39,7 @@
 | `JWT_REFRESH_TOKEN_DURATION` | Refresh token 有效時長 (預設: `7d`)，格式同上。`refresh_token` cookie 會與 token 同時到期；每次呼叫 `/refresh` 都會發出新的 refresh token，因此持續使用中的 session 會不斷延長 |
 | `HTTP_MODE` | 設定為 `development` 以啟用開發功能 |
 | `ALLOW_REGISTRATION` | 設定為 `true` 以允許使用者註冊 |
+| `ALLOW_UNVERIFIED_EMAIL` | 設定為 `true` 以接受未驗證的 email。預設會檢查 `email_verified` |
 | `PASS_OAUTH_TOKEN` | 設定為 `true` 以將 OAuth 供應商權杖傳遞給用戶端 (詳見操作情境)。 |
 
 時間格式：由一或多段 `<整數><單位>` 組成，單位為 `d`、`h`、`m`、`s`（例如 `30m`、`7d`、`1d12h`）。格式錯誤時服務會在啟動階段直接失敗。
