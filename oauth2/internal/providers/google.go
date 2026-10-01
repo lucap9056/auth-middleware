@@ -25,17 +25,18 @@ type GoogleUser struct {
 
 type GoogleProvider struct {
 	config     *oauth2.Config
+	options    Options
 	httpClient *http.Client
 }
 
-func NewGoogleProvider(config *oauth2.Config) *GoogleProvider {
+func NewGoogleProvider(config *oauth2.Config, opts ...Option) *GoogleProvider {
 	config.Scopes = []string{
 		"openid",
 		"email",
 		"profile",
 	}
 	config.Endpoint = google.Endpoint
-	return &GoogleProvider{config: config, httpClient: http.DefaultClient}
+	return &GoogleProvider{config: config, options: newOptions(opts), httpClient: http.DefaultClient}
 }
 
 func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
@@ -54,6 +55,10 @@ func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Use
 	var user GoogleUser
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	if err := p.options.checkEmail(user.Email, user.EmailVerified); err != nil {
+		return nil, err
 	}
 
 	return &Userinfo{
