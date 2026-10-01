@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -84,6 +85,49 @@ func TestFetchDiscovery_NonOKStatus(t *testing.T) {
 	_, err := FetchDiscovery(context.Background(), srv.URL)
 	if err == nil {
 		t.Fatal("expected error for non-OK status, got nil")
+	}
+}
+
+func TestFetchDiscovery_RetriesOnServerError(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		json.NewEncoder(w).Encode(OIDCDiscovery{
+			AuthorizationEndpoint: "http://" + r.Host + "/authorize",
+			TokenEndpoint:         "http://" + r.Host + "/token",
+		})
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := FetchDiscovery(ctx, srv.URL); err != nil {
+		t.Fatalf("expected success after retry, got %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected 2 calls, got %d", got)
+	}
+}
+
+func TestFetchDiscovery_StopsRetryingWhenContextCanceled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	if _, err := FetchDiscovery(ctx, srv.URL); err == nil {
+		t.Fatal("expected error after context timeout, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("expected prompt return after context timeout, took %v", elapsed)
 	}
 }
 

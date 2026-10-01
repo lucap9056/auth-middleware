@@ -58,7 +58,7 @@ func FetchDiscovery(ctx context.Context, issuerURL string) (*OIDCDiscovery, erro
 		case <-ctx.Done():
 			return nil, fmt.Errorf("context canceled while fetching discovery document: %w", ctx.Err())
 		default:
-			body, err := tryFetchDiscovery(ctx, discoveryURL)
+			body, retryable, err := tryFetchDiscovery(ctx, discoveryURL)
 			if err == nil {
 				var doc OIDCDiscovery
 				if err := json.Unmarshal(body, &doc); err != nil {
@@ -71,36 +71,44 @@ func FetchDiscovery(ctx context.Context, issuerURL string) (*OIDCDiscovery, erro
 				return &doc, nil
 			}
 
+			if !retryable {
+				return nil, err
+			}
+
 			fmt.Printf("Failed to fetch discovery document: %v. Retrying...\n", err)
-			time.Sleep(2 * time.Second)
+			select {
+			case <-ctx.Done():
+			case <-time.After(2 * time.Second):
+			}
 		}
 	}
 }
 
-func tryFetchDiscovery(ctx context.Context, discoveryURL string) ([]byte, error) {
+func tryFetchDiscovery(ctx context.Context, discoveryURL string) (body []byte, retryable bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create discovery request: %w", err)
+		return nil, false, fmt.Errorf("failed to create discovery request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch discovery document: %w", err)
+		return nil, true, fmt.Errorf("failed to fetch discovery document: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("discovery endpoint returned status: %s", resp.Status)
+		retryable := resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests
+		return nil, retryable, fmt.Errorf("discovery endpoint returned status: %s", resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read discovery response body: %w", err)
+		return nil, true, fmt.Errorf("failed to read discovery response body: %w", err)
 	}
 
-	return body, nil
+	return body, false, nil
 }
 
 type OIDCProvider struct {
