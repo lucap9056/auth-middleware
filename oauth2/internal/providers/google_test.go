@@ -23,9 +23,10 @@ func newGoogleServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc) 
 func TestGoogleProvider_GetUser_Success(t *testing.T) {
 	server := newGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(GoogleUser{
-			Sub:   "google-uid-001",
-			Email: "test@gmail.com",
-			Name:  "Test User",
+			Sub:           "google-uid-001",
+			Email:         "test@gmail.com",
+			EmailVerified: true,
+			Name:          "Test User",
 		})
 	}, nil)
 	defer server.Close()
@@ -44,6 +45,26 @@ func TestGoogleProvider_GetUser_Success(t *testing.T) {
 	}
 	if user.Name != "Test User" {
 		t.Errorf("Name: got %q, want %q", user.Name, "Test User")
+	}
+}
+
+func TestGoogleProvider_GetUser_RejectsUnverifiedEmail(t *testing.T) {
+	cases := map[string]GoogleUser{
+		"unverified":  {Sub: "1", Email: "u@example.com", EmailVerified: false},
+		"empty email": {Sub: "1", Email: "", EmailVerified: true},
+	}
+	for name, googleUser := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := newGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(googleUser)
+			}, nil)
+			defer server.Close()
+
+			provider := NewGoogleProvider(newTestConfig(server.URL))
+			if _, err := provider.GetUser(testContextWithClient(server.URL), newTestToken()); err == nil {
+				t.Fatal("expected error for unverified email, got nil")
+			}
+		})
 	}
 }
 
