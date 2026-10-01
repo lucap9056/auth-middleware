@@ -26,6 +26,7 @@ func TestDiscordProvider_GetUser_Success(t *testing.T) {
 			ID:       "123456789",
 			Username: "testuser",
 			Email:    "test@discord.com",
+			Verified: true,
 		})
 	}, nil)
 	defer server.Close()
@@ -44,6 +45,26 @@ func TestDiscordProvider_GetUser_Success(t *testing.T) {
 	}
 	if user.Name != "testuser" {
 		t.Errorf("Name: got %q, want %q", user.Name, "testuser")
+	}
+}
+
+func TestDiscordProvider_GetUser_RejectsUnverifiedEmail(t *testing.T) {
+	cases := map[string]DiscordUser{
+		"unverified":  {ID: "1", Username: "u", Email: "u@discord.com", Verified: false},
+		"empty email": {ID: "1", Username: "u", Email: "", Verified: true},
+	}
+	for name, discordUser := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := newDiscordServer(t, func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(discordUser)
+			}, nil)
+			defer server.Close()
+
+			provider := NewDiscordProvider(newTestConfig(server.URL))
+			if _, err := provider.GetUser(testContextWithClient(server.URL), newTestToken()); err == nil {
+				t.Fatal("expected error for unverified email, got nil")
+			}
+		})
 	}
 }
 
