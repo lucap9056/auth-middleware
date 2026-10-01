@@ -8,7 +8,11 @@ import (
 	"github.com/redis/rueidis"
 )
 
-func NewRedisClient(url string) (rueidis.Client, error) {
+type RedisClient struct {
+	rueidis.Client
+}
+
+func NewRedisClient(url string) (*RedisClient, error) {
 	if url == "" {
 		return nil, nil
 	}
@@ -32,5 +36,21 @@ func NewRedisClient(url string) (rueidis.Client, error) {
 		return nil, fmt.Errorf("redis connection failed: %w", err)
 	}
 
-	return client, nil
+	return &RedisClient{Client: client}, nil
+}
+
+func (c *RedisClient) Get(ctx context.Context, key string) rueidis.RedisResult {
+	return c.Do(ctx, c.B().Get().Key(key).Build())
+}
+
+func (c *RedisClient) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	return c.Do(ctx, c.B().Set().Key(key).Value(value).Px(ttl).Build()).Error()
+}
+
+func (c *RedisClient) SetNX(ctx context.Context, key, value string, ttl time.Duration) error {
+	return c.Do(ctx, c.B().Set().Key(key).Value(value).Nx().Px(ttl).Build()).Error()
+}
+
+func (c *RedisClient) Del(ctx context.Context, key string) error {
+	return c.Do(ctx, c.B().Del().Key(key).Build()).Error()
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/redis/rueidis"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
 )
 
 type TokenPair struct {
@@ -36,7 +36,7 @@ func WithMaximumSize(size int) Option {
 	}
 }
 
-func NewCache(client rueidis.Client, opts ...Option) (Cache, error) {
+func NewCache(client *cache.RedisClient, opts ...Option) (Cache, error) {
 	cfg := &config{TTL: 30 * time.Second, MaximumSize: 100_000}
 	for _, opt := range opts {
 		opt(cfg)

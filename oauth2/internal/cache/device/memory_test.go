@@ -18,7 +18,7 @@ func newTestMemoryCache(t *testing.T, ttl time.Duration) *memorySecretCache {
 
 func TestMemorySecretCache_SetGet(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "s1")
+	c.SetSecret("d1", "s1", true)
 
 	got, ok := c.GetSecret("d1")
 	if !ok || got != "s1" {
@@ -31,7 +31,7 @@ func TestMemorySecretCache_SetGet(t *testing.T) {
 
 func TestMemorySecretCache_Expires(t *testing.T) {
 	c := newTestMemoryCache(t, 50*time.Millisecond)
-	c.SetSecret("d1", "s1")
+	c.SetSecret("d1", "s1", true)
 	time.Sleep(100 * time.Millisecond)
 
 	if _, ok := c.GetSecret("d1"); ok {
@@ -41,8 +41,8 @@ func TestMemorySecretCache_Expires(t *testing.T) {
 
 func TestMemorySecretCache_Delete(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "s1")
-	c.SetSecret("d2", "s2")
+	c.SetSecret("d1", "s1", true)
+	c.SetSecret("d2", "s2", true)
 
 	c.DeleteSecret("d1")
 	if _, ok := c.GetSecret("d1"); ok {
@@ -66,5 +66,35 @@ func TestMemorySecretCache_Close(t *testing.T) {
 	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("second Close: %v", err)
+	}
+}
+
+func TestMemorySecretCache_WithoutOverwriteKeepsNewerSecret(t *testing.T) {
+	c := newTestMemoryCache(t, time.Minute)
+	c.SetSecret("d1", "rotated", true)
+	c.SetSecret("d1", "stale", false)
+
+	if got, _ := c.GetSecret("d1"); got != "rotated" {
+		t.Fatalf("GetSecret = %q; want rotated", got)
+	}
+}
+
+func TestMemorySecretCache_WithoutOverwriteCannotRestoreDeleted(t *testing.T) {
+	c := newTestMemoryCache(t, time.Minute)
+	c.SetSecret("d1", "s1", true)
+	c.DeleteSecret("d1")
+	c.SetSecret("d1", "s1", false)
+
+	if _, ok := c.GetSecret("d1"); ok {
+		t.Fatal("deleted secret must not be restored by a stale fill")
+	}
+}
+
+func TestMemorySecretCache_WithoutOverwriteFillsMiss(t *testing.T) {
+	c := newTestMemoryCache(t, time.Minute)
+	c.SetSecret("d1", "s1", false)
+
+	if got, ok := c.GetSecret("d1"); !ok || got != "s1" {
+		t.Fatalf("GetSecret = %q, %v; want s1, true", got, ok)
 	}
 }

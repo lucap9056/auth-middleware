@@ -12,7 +12,10 @@ type memorySecretCache struct {
 }
 
 func newMemorySecretCache(maximumSize int, ttl time.Duration) (*memorySecretCache, error) {
-	secrets, err := cache.NewMemoryCache[string](maximumSize, func(string) time.Duration {
+	secrets, err := cache.NewMemoryCache[string](maximumSize, func(secret string) time.Duration {
+		if secret == "" {
+			return ttl + deletedSecretExtraTTL
+		}
 		return ttl
 	})
 	if err != nil {
@@ -22,15 +25,23 @@ func newMemorySecretCache(maximumSize int, ttl time.Duration) (*memorySecretCach
 }
 
 func (m *memorySecretCache) GetSecret(deviceID string) (string, bool) {
-	return m.secrets.GetIfPresent(deviceID)
+	secret, found := m.secrets.GetIfPresent(deviceID)
+	if !found || secret == "" {
+		return "", false
+	}
+	return secret, true
 }
 
-func (m *memorySecretCache) SetSecret(deviceID, secret string) {
-	m.secrets.Set(deviceID, secret)
+func (m *memorySecretCache) SetSecret(deviceID, secret string, overwrite bool) {
+	if overwrite {
+		m.secrets.Set(deviceID, secret)
+		return
+	}
+	m.secrets.SetIfAbsent(deviceID, secret)
 }
 
 func (m *memorySecretCache) DeleteSecret(deviceID string) {
-	m.secrets.Invalidate(deviceID)
+	m.secrets.Set(deviceID, "")
 }
 
 func (m *memorySecretCache) Close() error {

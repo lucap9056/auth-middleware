@@ -1,10 +1,14 @@
 package device
 
-import "github.com/lucap9056/auth-middleware/database"
+import (
+	"github.com/lucap9056/auth-middleware/database"
+	"golang.org/x/sync/singleflight"
+)
 
 type CachedDB struct {
 	*database.Database
-	cache SecretCache
+	cache       SecretCache
+	secretLoads singleflight.Group
 }
 
 func NewCachedDB(db *database.Database, cache SecretCache) *CachedDB {
@@ -15,19 +19,26 @@ func (c *CachedDB) GetDeviceSecret(deviceID string) (string, error) {
 	if secret, ok := c.cache.GetSecret(deviceID); ok {
 		return secret, nil
 	}
-	secret, err := c.Database.GetDeviceSecret(deviceID)
+
+	v, err, _ := c.secretLoads.Do(deviceID, func() (any, error) {
+		secret, err := c.Database.GetDeviceSecret(deviceID)
+		if err != nil {
+			return "", err
+		}
+		c.cache.SetSecret(deviceID, secret, false)
+		return secret, nil
+	})
 	if err != nil {
 		return "", err
 	}
-	c.cache.SetSecret(deviceID, secret)
-	return secret, nil
+	return v.(string), nil
 }
 
 func (c *CachedDB) UpdateDeviceSecret(deviceID, secret string) error {
 	if err := c.Database.UpdateDeviceSecret(deviceID, secret); err != nil {
 		return err
 	}
-	c.cache.SetSecret(deviceID, secret)
+	c.cache.SetSecret(deviceID, secret, true)
 	return nil
 }
 
@@ -36,7 +47,7 @@ func (c *CachedDB) SaveDeviceSecret(userID, deviceName, secret string) (string, 
 	if err != nil {
 		return "", err
 	}
-	c.cache.SetSecret(deviceID, secret)
+	c.cache.SetSecret(deviceID, secret, true)
 	return deviceID, nil
 }
 

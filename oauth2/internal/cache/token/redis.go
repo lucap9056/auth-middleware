@@ -6,20 +6,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
 	"github.com/redis/rueidis"
 )
 
 type redisCache struct {
-	client rueidis.Client
+	client *cache.RedisClient
 	ttl    time.Duration
 }
 
-func newRedisCache(client rueidis.Client, ttl time.Duration) *redisCache {
+func newRedisCache(client *cache.RedisClient, ttl time.Duration) *redisCache {
 	return &redisCache{client: client, ttl: ttl}
 }
 
 func (r *redisCache) Get(ctx context.Context, key string) (*TokenPair, error) {
-	val, err := r.client.Do(ctx, r.client.B().Get().Key(key).Build()).AsBytes()
+	val, err := r.client.Get(ctx, key).AsBytes()
 	if rueidis.IsRedisNil(err) {
 		return nil, nil
 	}
@@ -39,5 +40,5 @@ func (r *redisCache) Set(ctx context.Context, key string, value TokenPair) error
 	if err != nil {
 		return fmt.Errorf("marshal tokens failed: %w", err)
 	}
-	return r.client.Do(ctx, r.client.B().Set().Key(key).Value(rueidis.BinaryString(valueBytes)).Px(r.ttl).Build()).Error()
+	return r.client.Set(ctx, key, rueidis.BinaryString(valueBytes), r.ttl)
 }
