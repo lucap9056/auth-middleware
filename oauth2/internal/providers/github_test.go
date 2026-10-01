@@ -125,6 +125,30 @@ func TestGitHubProvider_GetUser_NoVerifiedPrimaryEmail(t *testing.T) {
 	}
 }
 
+func TestGitHubProvider_GetUser_UnverifiedPrimaryEmailAllowed(t *testing.T) {
+	srv := newGitHubServer(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			json.NewEncoder(w).Encode(GitHubUser{ID: 1, Login: "u", Email: ""})
+		},
+		func(w http.ResponseWriter, _ *http.Request) {
+			json.NewEncoder(w).Encode([]GitHubEmail{
+				{Email: "unverified@example.com", Primary: true, Verified: false},
+			})
+		},
+		nil,
+	)
+	defer srv.Close()
+
+	provider := NewGitHubProvider(newTestConfig(srv.URL), WithAllowUnverifiedEmail(true))
+	user, err := provider.GetUser(testContextWithClient(srv.URL), newTestToken())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user.Email != "unverified@example.com" {
+		t.Errorf("Email: got %q, want %q", user.Email, "unverified@example.com")
+	}
+}
+
 func TestGitHubProvider_GetUser_NonOKStatus(t *testing.T) {
 	srv := newGitHubServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

@@ -27,13 +27,14 @@ type GitHubEmail struct {
 
 type GitHubProvider struct {
 	config     *oauth2.Config
+	options    Options
 	httpClient *http.Client
 }
 
-func NewGitHubProvider(config *oauth2.Config) *GitHubProvider {
+func NewGitHubProvider(config *oauth2.Config, opts ...Option) *GitHubProvider {
 	config.Scopes = []string{"read:user", "user:email"}
 	config.Endpoint = github.Endpoint
-	return &GitHubProvider{config: config, httpClient: http.DefaultClient}
+	return &GitHubProvider{config: config, options: newOptions(opts), httpClient: http.DefaultClient}
 }
 
 func (p *GitHubProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
@@ -80,8 +81,6 @@ func (p *GitHubProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Use
 	}, nil
 }
 
-// fetchPrimaryEmail calls /user/emails to find the verified primary email,
-// used when the user's email is set to private on GitHub.
 func (p *GitHubProvider) fetchPrimaryEmail(ctx context.Context, client *http.Client) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", nil)
 	if err != nil {
@@ -105,12 +104,16 @@ func (p *GitHubProvider) fetchPrimaryEmail(ctx context.Context, client *http.Cli
 	}
 
 	for _, e := range emails {
-		if e.Primary && e.Verified {
-			return e.Email, nil
+		if !e.Primary {
+			continue
 		}
+		if err := p.options.checkEmail(e.Email, e.Verified); err != nil {
+			return "", err
+		}
+		return e.Email, nil
 	}
 
-	return "", fmt.Errorf("no verified primary email found on GitHub account")
+	return "", ErrMissingEmail
 }
 
 // Revoke uses GitHub's DELETE /applications/{client_id}/token endpoint
