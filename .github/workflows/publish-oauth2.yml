@@ -3,44 +3,70 @@ name: Publish OAuth2
 on:
   push:
     tags:
-      - 'oauth2/v*.*.*'
+      - "oauth2/v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   publish:
     name: Build & Publish OAuth2 Image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Ensure tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "${GITHUB_REF_NAME} points to a commit that is not on main" >&2
+            exit 1
+          fi
+
+      - name: Resolve current tag
+        id: tags
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME#oauth2/}"
+          NO_V="${CURRENT_TAG#v}"
+          MAJOR_MINOR="${NO_V%.*}"
+          {
+            echo "current=${CURRENT_TAG}"
+            echo "current_no_v=${NO_V}"
+            echo "current_major_minor=v${MAJOR_MINOR}"
+            echo "current_major_minor_no_v=${MAJOR_MINOR}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Normalize registry owner
+        id: owner
+        run: echo "name=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract Metadata (OAuth2)
-        id: meta-oauth2
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/oauth2-middleware
-          tags: |
-            type=match,pattern=oauth2/v(.*),group=1
-            type=raw,value=latest
-
-      - name: Build and Push OAuth2
-        uses: docker/build-push-action@v5
+      - name: Build and push image
+        uses: docker/build-push-action@v6
         with:
           context: ./oauth2
           file: ./oauth2/docker/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.meta-oauth2.outputs.tags }}
-          labels: ${{ steps.meta-oauth2.outputs.labels }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current }}
+            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current_no_v }}
+            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current_major_minor }}
+            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current_major_minor_no_v }}
+            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
