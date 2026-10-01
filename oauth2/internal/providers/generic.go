@@ -12,20 +12,22 @@ import (
 )
 
 type GenericUser struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	ID            string       `json:"id"`
+	Email         string       `json:"email"`
+	EmailVerified flexibleBool `json:"email_verified"`
+	Name          string       `json:"name"`
 }
 
 type GenericProvider struct {
 	config      *oauth2.Config
+	options     Options
 	userinfoURL string
 	revokeURL   string
 	httpClient  *http.Client
 }
 
-func NewGenericProvider(config *oauth2.Config, userinfoURL string, revokeURL string) *GenericProvider {
-	return &GenericProvider{config: config, userinfoURL: userinfoURL, revokeURL: revokeURL, httpClient: http.DefaultClient}
+func NewGenericProvider(config *oauth2.Config, userinfoURL string, revokeURL string, opts ...Option) *GenericProvider {
+	return &GenericProvider{config: config, options: newOptions(opts), userinfoURL: userinfoURL, revokeURL: revokeURL, httpClient: http.DefaultClient}
 }
 
 func (p *GenericProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
@@ -43,6 +45,10 @@ func (p *GenericProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Us
 	var user GenericUser
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	if err := p.options.checkEmail(user.Email, bool(user.EmailVerified)); err != nil {
+		return nil, err
 	}
 
 	return &Userinfo{
