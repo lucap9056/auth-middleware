@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/lucap9056/auth-middleware/database"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 )
 
 func TestHealth(t *testing.T) {
@@ -163,7 +163,7 @@ func TestCallback_RegistrationEnabled(t *testing.T) {
 	defer stub.Close()
 
 	db := newMockDB()
-	env := newTestEnv(stub, db, handlers.WithAllowRegistration(true))
+	env := newTestEnv(stub, db, options.WithAllowRegistration(true))
 
 	stateVal := loginState(t, env)
 	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
@@ -281,7 +281,7 @@ func TestCallback_NoDB_PassOAuthToken(t *testing.T) {
 	stub := newOAuthStub("u1", "a@b.com", "A")
 	defer stub.Close()
 
-	env := newTestEnv(stub, nil, handlers.WithPassOAuthToken(true))
+	env := newTestEnv(stub, nil, options.WithPassOAuthToken(true))
 
 	stateVal := loginState(t, env)
 	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)

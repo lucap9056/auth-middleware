@@ -17,6 +17,8 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"github.com/lucap9056/go-envfile/envfile"
@@ -84,7 +86,7 @@ func main() {
 	defer deviceCache.Close()
 
 	var jwtDB jwt.Database
-	var handlerDB handlers.DB
+	var handlerDB options.DB
 	if db != nil {
 		cachedDB := device.NewCachedDB(db, deviceCache)
 		jwtDB = cachedDB
@@ -112,7 +114,7 @@ func main() {
 	enableOAuth2 := clientID != "" && clientSecret != "" && redirectURL != ""
 	oidcIssuer := os.Getenv(EnvOIDCIssuerURL)
 
-	var oauth2Client handlers.OAuth2Client
+	var oauth2Client login.OAuth2Client
 
 	switch {
 	case oidcIssuer != "" && !enableOAuth2:
@@ -138,7 +140,6 @@ func main() {
 			log.Fatalf("OIDC setup failed: %v", err)
 		}
 		oauth2Client = oidcClient
-		enableOAuth2 = true
 		log.Printf("Starting OIDC server (Issuer: %s) on %s (Mode: %s)", oidcIssuer, httpAddress, mode)
 
 	case enableOAuth2:
@@ -192,39 +193,31 @@ func main() {
 		log.Fatalf("Failed to create state cache: %v", err)
 	}
 
-	var authOptions []handlers.AuthOption
+	var authOptions []options.Option
 	if devMode {
-		authOptions = append(authOptions, handlers.WithDevMode(true))
+		authOptions = append(authOptions, options.WithDevMode(true))
 	}
 	if os.Getenv(EnvAllowRegistration) == "true" {
-		authOptions = append(authOptions, handlers.WithAllowRegistration(true))
+		authOptions = append(authOptions, options.WithAllowRegistration(true))
 	}
 	if os.Getenv(EnvPassOAuthToken) == "true" {
-		authOptions = append(authOptions, handlers.WithPassOAuthToken(true))
+		authOptions = append(authOptions, options.WithPassOAuthToken(true))
 	}
 
 	if os.Getenv(EnvOAuth2ClientPKCE) == "true" {
-		authOptions = append(authOptions, handlers.WithClientPKCE(true))
+		authOptions = append(authOptions, options.WithClientPKCE(true))
 	}
-
-	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Client, authOptions...)
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", authHandler.Health)
-	if db != nil {
-		mux.HandleFunc("POST /refresh", authHandler.Refresh)
-		mux.HandleFunc("POST /refresh-access", authHandler.RefreshAccess)
-		mux.HandleFunc("POST /logout", authHandler.Logout)
-		mux.HandleFunc("GET /verify", authHandler.Verify)
-		mux.HandleFunc("DELETE /users/me", authHandler.DeleteMe)
-	}
-
-	if enableOAuth2 {
-		mux.HandleFunc("GET /login", authHandler.Login)
-		mux.HandleFunc("GET /callback", authHandler.Callback)
-		log.Println("OAuth2 is enabled")
-	}
+	handlers.RegisterRoutes(mux, handlers.Dependencies{
+		DB:           handlerDB,
+		JWTManager:   jwtManager,
+		RefreshCache: refreshCache,
+		StateCache:   stateCache,
+		OAuth2Client: oauth2Client,
+		Options:      authOptions,
+	})
 
 	server := &http.Server{
 		Handler:      mux,

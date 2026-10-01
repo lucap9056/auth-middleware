@@ -1,4 +1,4 @@
-package handlers
+package options
 
 import "github.com/lucap9056/auth-middleware/database"
 
@@ -12,33 +12,41 @@ type DB interface {
 	DeleteUser(userID string) error
 }
 
-type AuthConfig struct {
+type Options struct {
 	DevMode           bool
 	AllowRegistration bool
 	PassOAuthToken    bool
 	ClientPKCE        bool
 }
 
-type AuthOption func(*AuthConfig)
+type Option func(*Options)
 
-func WithDevMode(enabled bool) AuthOption {
-	return func(c *AuthConfig) {
+func New(opts ...Option) *Options {
+	o := &Options{}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
+}
+
+func WithDevMode(enabled bool) Option {
+	return func(c *Options) {
 		c.DevMode = enabled
 	}
 }
 
-func WithAllowRegistration(enabled bool) AuthOption {
-	return func(c *AuthConfig) {
+func WithAllowRegistration(enabled bool) Option {
+	return func(c *Options) {
 		c.AllowRegistration = enabled
 	}
 }
 
-func WithPassOAuthToken(enabled bool) AuthOption {
-	return func(c *AuthConfig) {
+func WithPassOAuthToken(enabled bool) Option {
+	return func(c *Options) {
 		c.PassOAuthToken = enabled
 	}
 }
 
-func WithClientPKCE(enabled bool) AuthOption {
-	return func(c *AuthConfig) { c.ClientPKCE = enabled }
+func WithClientPKCE(enabled bool) Option {
+	return func(c *Options) { c.ClientPKCE = enabled }
 }

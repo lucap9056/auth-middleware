@@ -13,6 +13,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 )
 
@@ -57,7 +58,7 @@ func (s *oauthStub) handleRevoke(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// mockDB implements handlers.DB and jwt.Database using in-memory maps.
+// mockDB implements options.DB and jwt.Database using in-memory maps.
 type mockDB struct {
 	mu           sync.Mutex
 	users        map[string]*database.User // email -> user
@@ -177,9 +178,9 @@ type testEnv struct {
 
 // newTestEnv builds a handler stack backed by the given stub and mock DB.
 // Pass db=nil to simulate a no-database deployment.
-func newTestEnv(stub *oauthStub, db *mockDB, opts ...handlers.AuthOption) *testEnv {
+func newTestEnv(stub *oauthStub, db *mockDB, opts ...options.Option) *testEnv {
 	var jwtDB jwt.Database
-	var handlerDB handlers.DB
+	var handlerDB options.DB
 	if db != nil {
 		jwtDB = db
 		handlerDB = db
@@ -206,17 +207,15 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...handlers.AuthOption) *testE
 	if err != nil {
 		panic(err)
 	}
-	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Client, opts...)
-
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", authHandler.Health)
-	mux.HandleFunc("GET /login", authHandler.Login)
-	mux.HandleFunc("GET /callback", authHandler.Callback)
-	mux.HandleFunc("POST /refresh", authHandler.Refresh)
-	mux.HandleFunc("POST /refresh-access", authHandler.RefreshAccess)
-	mux.HandleFunc("GET /verify", authHandler.Verify)
-	mux.HandleFunc("POST /logout", authHandler.Logout)
-	mux.HandleFunc("DELETE /users/me", authHandler.DeleteMe)
+	handlers.RegisterRoutes(mux, handlers.Dependencies{
+		DB:           handlerDB,
+		JWTManager:   jwtManager,
+		RefreshCache: refreshCache,
+		StateCache:   stateCache,
+		OAuth2Client: oauth2Client,
+		Options:      opts,
+	})
 
 	return &testEnv{stub: stub, db: db, jwtManager: jwtManager, mux: mux}
 }
