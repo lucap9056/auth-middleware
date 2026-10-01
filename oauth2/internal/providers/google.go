@@ -13,9 +13,9 @@ import (
 )
 
 type GoogleUser struct {
-	ID            string `json:"id"`
+	Sub           string `json:"sub"`
 	Email         string `json:"email"`
-	VerifiedEmail bool   `json:"verified_email"`
+	EmailVerified bool   `json:"email_verified"`
 	Name          string `json:"name"`
 	GivenName     string `json:"given_name"`
 	FamilyName    string `json:"family_name"`
@@ -30,8 +30,9 @@ type GoogleProvider struct {
 
 func NewGoogleProvider(config *oauth2.Config) *GoogleProvider {
 	config.Scopes = []string{
-		"https://www.googleapis.com/auth/userinfo.email",
-		"https://www.googleapis.com/auth/userinfo.profile",
+		"openid",
+		"email",
+		"profile",
 	}
 	config.Endpoint = google.Endpoint
 	return &GoogleProvider{config: config, httpClient: http.DefaultClient}
@@ -40,7 +41,7 @@ func NewGoogleProvider(config *oauth2.Config) *GoogleProvider {
 func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
 	client := p.config.Client(ctx, token)
 
-	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
+	resp, err := client.Get("https://openidconnect.googleapis.com/v1/userinfo")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
@@ -56,7 +57,7 @@ func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Use
 	}
 
 	return &Userinfo{
-		ID:    user.ID,
+		ID:    user.Sub,
 		Email: user.Email,
 		Name:  user.Name,
 	}, nil

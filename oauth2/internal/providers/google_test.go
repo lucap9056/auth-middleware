@@ -12,7 +12,7 @@ func newGoogleServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc) 
 	t.Helper()
 	mux := http.NewServeMux()
 	if userHandler != nil {
-		mux.HandleFunc("/oauth2/v2/userinfo", userHandler)
+		mux.HandleFunc("/v1/userinfo", userHandler)
 	}
 	if revokeHandler != nil {
 		mux.HandleFunc("/revoke", revokeHandler)
@@ -23,7 +23,7 @@ func newGoogleServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc) 
 func TestGoogleProvider_GetUser_Success(t *testing.T) {
 	server := newGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(GoogleUser{
-			ID:    "google-uid-001",
+			Sub:   "google-uid-001",
 			Email: "test@gmail.com",
 			Name:  "Test User",
 		})
