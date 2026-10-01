@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lucap9056/auth-middleware/database"
@@ -375,6 +376,65 @@ func TestRefresh_WithCookie(t *testing.T) {
 	}
 	if !resp.Success {
 		t.Fatal("want success=true")
+	}
+}
+
+func refreshWithCookie(env *testEnv, refreshToken string) (int, string) {
+	req := httptest.NewRequest(http.MethodPost, "/refresh", nil)
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: refreshToken})
+	w := env.do(req)
+
+	var resp struct {
+		Message struct {
+			RefreshToken string `json:"refresh_token"`
+		} `json:"message"`
+	}
+	json.NewDecoder(w.Body).Decode(&resp)
+	return w.Code, resp.Message.RefreshToken
+}
+
+func TestRefresh_ConcurrentSameTokenSharesRotation(t *testing.T) {
+	const (
+		userID   = "uid-concurrent"
+		username = "concurrent"
+		email    = "concurrent@example.com"
+	)
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	env := newTestEnv(stub, db)
+
+	refresh, _ := env.issueTokens(userID, username, "device")
+
+	const n = 10
+	codes := make([]int, n)
+	rotated := make([]string, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			codes[i], rotated[i] = refreshWithCookie(env, refresh)
+		})
+	}
+	wg.Wait()
+
+	for i := range n {
+		if codes[i] != http.StatusOK {
+			t.Fatalf("request %d: want 200, got %d", i, codes[i])
+		}
+		if rotated[i] != rotated[0] {
+			t.Fatalf("request %d received a different rotated token; concurrent refreshes must share one rotation", i)
+		}
+	}
+
+	if code, _ := refreshWithCookie(env, refresh); code != http.StatusOK {
+		t.Errorf("retry with the original token inside the grace window: want 200, got %d", code)
+	}
+
+	if code, _ := refreshWithCookie(env, rotated[0]); code != http.StatusOK {
+		t.Errorf("rotated token must stay valid after concurrent refreshes: want 200, got %d", code)
 	}
 }
 

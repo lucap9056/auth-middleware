@@ -10,13 +10,17 @@ import (
 
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/refreshtoken"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/response"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"golang.org/x/oauth2"
-	"golang.org/x/sync/singleflight"
+)
+
+const (
+	flightKeyPrefix = "exchange:"
+	exchangeTimeout = 30 * time.Second
 )
 
 type OAuth2Client interface {
@@ -31,16 +35,17 @@ type Handler struct {
 	jwtManager   *jwt.JWTManager
 	stateCache   state.Cache
 	oauth2Client OAuth2Client
+	flight       *flight.Group
 	options      *options.Options
-	singleflight singleflight.Group
 }
 
-func New(db options.DB, jwtManager *jwt.JWTManager, stateCache state.Cache, oauth2Client OAuth2Client, opts *options.Options) *Handler {
+func New(db options.DB, jwtManager *jwt.JWTManager, stateCache state.Cache, oauth2Client OAuth2Client, flightGroup *flight.Group, opts *options.Options) *Handler {
 	return &Handler{
 		db:           db,
 		jwtManager:   jwtManager,
 		stateCache:   stateCache,
 		oauth2Client: oauth2Client,
+		flight:       flightGroup,
 		options:      opts,
 	}
 }
@@ -56,8 +61,8 @@ type ExchangeResponse struct {
 	Success     bool
 	Message     string
 	State       int
-	OAuth2Token *token.TokenPair
-	AuthToken   *token.TokenPair
+	OAuth2Token *response.TokenPair
+	AuthToken   *response.TokenPair
 }
 
 func generateState() string {
@@ -136,9 +141,13 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*ExchangeResponse, error) {
-	v, err, _ := h.singleflight.Do(code+"|"+state+"|"+headerVerifier, func() (any, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), exchangeTimeout)
+	defer cancel()
 
-		stateCtx, stateCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	key := flightKeyPrefix + code + "|" + state + "|" + headerVerifier
+	return flight.Do(ctx, h.flight, key, func(ctx context.Context) (*ExchangeResponse, error) {
+
+		stateCtx, stateCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer stateCancel()
 
 		verifier, err := h.stateCache.Get(stateCtx, state)
@@ -167,7 +176,7 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 			}
 		}
 
-		exchangeCtx, exchangeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		exchangeCtx, exchangeCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer exchangeCancel()
 		oauth2Token, err := h.oauth2Client.Exchange(exchangeCtx, code, verifier)
 		if err != nil {
@@ -192,7 +201,7 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 		}()
 
 		if h.db != nil {
-			getUserCtx, getUserCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			getUserCtx, getUserCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer getUserCancel()
 			user, err := h.oauth2Client.GetUser(getUserCtx, oauth2Token)
 			if err != nil {
@@ -262,7 +271,7 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 			}
 
 			if !h.options.PassOAuthToken {
-				revokeCtx, revokeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				revokeCtx, revokeCancel := context.WithTimeout(ctx, 5*time.Second)
 				defer revokeCancel()
 				h.oauth2Client.Revoke(revokeCtx, oauth2Token)
 			}
@@ -271,11 +280,11 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 				Success: true,
 				Message: "Login successful",
 				State:   http.StatusOK,
-				OAuth2Token: &token.TokenPair{
+				OAuth2Token: &response.TokenPair{
 					AccessToken:  oauth2Token.AccessToken,
 					RefreshToken: oauth2Token.RefreshToken,
 				},
-				AuthToken: &token.TokenPair{
+				AuthToken: &response.TokenPair{
 					AccessToken:  accessToken,
 					RefreshToken: refreshToken,
 				},
@@ -286,12 +295,10 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 			Success: true,
 			Message: "Login successful",
 			State:   http.StatusOK,
-			OAuth2Token: &token.TokenPair{
+			OAuth2Token: &response.TokenPair{
 				AccessToken:  oauth2Token.AccessToken,
 				RefreshToken: oauth2Token.RefreshToken,
 			},
 		}, nil
-	})
-
-	return v.(*ExchangeResponse), err
+	}, flight.InFlightOnly())
 }

@@ -29,8 +29,7 @@
 | `OAUTH2_REVOKE_URL` | 選填 |
 | `OIDC_ISSUER_URL` | 啟用 OIDC discovery 模式：自動從 `{issuer}/.well-known/openid-configuration` 取得 auth/token/userinfo/revocation 端點。需搭配 `OAUTH2_CLIENT_ID`、`OAUTH2_CLIENT_SECRET`、`OAUTH2_REDIRECT_URL`；設定後優先於 `OAUTH2_PROVIDER`。 |
 | `OAUTH2_CLIENT_PKCE` | 設定為 `true` 讓用戶端自行持有 PKCE verifier（由 `/login` 回傳，呼叫 `/callback` 時須透過 `X-PKCE-Verifier` header 帶回）。預設為 `false`，即由伺服器內部管理 verifier — 詳見下方「登入流程」。 |
-| `REDIS_URL` | Redis 連線字串 (用於 refresh token 快取與 OAuth `state` 儲存；未設定時退回程序內快取，不適合多實例部署) |
-| `REFRESH_TOKEN_TTL` | Refresh token 的過期時間 (例如 `24h`) |
+| `REDIS_URL` | Redis 連線字串 (用於 OAuth `state` 儲存、device secret 快取，以及 `/callback` 與 `/refresh` 的跨實例去重；未設定時退回程序內實作，不適合多實例部署) |
 | `HTTP_MODE` | 設定為 `development` 以啟用開發功能 |
 | `ALLOW_REGISTRATION` | 設定為 `true` 以允許使用者註冊 |
 | `PASS_OAUTH_TOKEN` | 設定為 `true` 以將 OAuth 供應商權杖傳遞給用戶端 (詳見操作情境)。 |

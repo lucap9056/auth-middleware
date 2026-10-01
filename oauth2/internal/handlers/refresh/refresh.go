@@ -1,27 +1,50 @@
 package refresh
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/lucap9056/auth-middleware/jwt"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/refreshtoken"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/response"
 )
 
+const (
+	flightKeyPrefix = "refresh:"
+	rotateTimeout   = 10 * time.Second
+)
+
+type rotateError struct {
+	message string
+	status  int
+	err     error
+}
+
+func (e *rotateError) Error() string {
+	return fmt.Sprintf("%s: %v", e.message, e.err)
+}
+
+func (e *rotateError) Unwrap() error {
+	return e.err
+}
+
 type Handler struct {
 	db           options.DB
 	jwtManager   *jwt.JWTManager
-	refreshCache token.Cache
+	flight       *flight.Group
 	secureCookie bool
 }
 
-func New(db options.DB, jwtManager *jwt.JWTManager, refreshCache token.Cache, secureCookie bool) *Handler {
+func New(db options.DB, jwtManager *jwt.JWTManager, flightGroup *flight.Group, secureCookie bool) *Handler {
 	return &Handler{
 		db:           db,
 		jwtManager:   jwtManager,
-		refreshCache: refreshCache,
+		flight:       flightGroup,
 		secureCookie: secureCookie,
 	}
 }
@@ -33,47 +56,54 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := h.jwtManager.VerifyRefresh(refreshToken)
+	// The rotation is shared with concurrent callers, so one client disconnecting must not abort it for the rest.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), rotateTimeout)
+	defer cancel()
+
+	tokens, err := flight.Do(ctx, h.flight, flightKeyPrefix+refreshToken, func(ctx context.Context) (response.TokenPair, error) {
+		return h.rotate(refreshToken)
+	})
 	if err != nil {
-		response.JSON(w, false, "Invalid session or expired refresh token", http.StatusUnauthorized, err)
+		var rotateErr *rotateError
+		if errors.As(err, &rotateErr) {
+			response.JSON(w, false, rotateErr.message, rotateErr.status, rotateErr.err)
+			return
+		}
+		response.JSON(w, false, "Failed to rotate refresh token", http.StatusInternalServerError, err)
 		return
 	}
 
-	cachedToken, err := h.refreshCache.Get(r.Context(), refreshToken)
-	if err == nil && cachedToken != nil {
-		response.JSON(w, true, cachedToken, http.StatusOK, nil)
-		return
+	refreshtoken.SetCookie(w, tokens.RefreshToken, h.secureCookie)
+	response.JSON(w, true, tokens, http.StatusOK, nil)
+}
+
+func (h *Handler) rotate(refreshToken string) (response.TokenPair, error) {
+	claims, err := h.jwtManager.VerifyRefresh(refreshToken)
+	if err != nil {
+		return response.TokenPair{}, &rotateError{"Invalid session or expired refresh token", http.StatusUnauthorized, err}
 	}
 
 	userID := claims.Subject
 
 	user, err := h.db.GetUserFromID(userID)
 	if err != nil {
-		response.JSON(w, false, "User not found", http.StatusUnauthorized, err)
-		return
+		return response.TokenPair{}, &rotateError{"User not found", http.StatusUnauthorized, err}
 	}
 
 	newRefreshToken, err := h.jwtManager.GenerateRefresh(userID, claims.DeviceID)
 	if err != nil {
-		response.JSON(w, false, "Failed to rotate refresh token", http.StatusInternalServerError, err)
-		return
+		return response.TokenPair{}, &rotateError{"Failed to rotate refresh token", http.StatusInternalServerError, err}
 	}
 
 	accessToken, err := h.jwtManager.GenerateAccess(newRefreshToken, user.Username)
 	if err != nil {
-		response.JSON(w, false, "Access token generation failed", http.StatusInternalServerError, err)
-		return
+		return response.TokenPair{}, &rotateError{"Access token generation failed", http.StatusInternalServerError, err}
 	}
 
-	token := token.TokenPair{
+	return response.TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
-	}
-	h.refreshCache.Set(r.Context(), refreshToken, token)
-
-	refreshtoken.SetCookie(w, newRefreshToken, h.secureCookie)
-	response.JSON(w, true, token, http.StatusOK, nil)
-
+	}, nil
 }
 
 func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {

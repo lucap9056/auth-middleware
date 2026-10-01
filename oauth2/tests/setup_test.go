@@ -11,7 +11,7 @@ import (
 	"github.com/lucap9056/auth-middleware/database"
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
@@ -199,7 +199,7 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...options.Option) *testEnv {
 	})
 
 	jwtManager := jwt.NewJWTManager(jwtDB)
-	refreshCache, err := token.NewCache(nil)
+	flightGroup, err := flight.New()
 	if err != nil {
 		panic(err)
 	}
@@ -211,7 +211,7 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...options.Option) *testEnv {
 	handlers.RegisterRoutes(mux, handlers.Dependencies{
 		DB:           handlerDB,
 		JWTManager:   jwtManager,
-		RefreshCache: refreshCache,
+		Flight:       flightGroup,
 		StateCache:   stateCache,
 		OAuth2Client: oauth2Client,
 		Options:      opts,

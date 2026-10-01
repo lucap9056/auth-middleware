@@ -29,8 +29,7 @@ This module has built-in support for the following OAuth2 providers:
 | `OAUTH2_REVOKE_URL` | Optional |
 | `OIDC_ISSUER_URL` | Enables OIDC discovery mode: auto-configures the auth/token/userinfo/revocation endpoints from `{issuer}/.well-known/openid-configuration`. Requires `OAUTH2_CLIENT_ID`, `OAUTH2_CLIENT_SECRET`, and `OAUTH2_REDIRECT_URL`; takes precedence over `OAUTH2_PROVIDER`. |
 | `OAUTH2_CLIENT_PKCE` | Set to `true` to have the client hold the PKCE verifier itself (returned by `/login`, must be sent back via the `X-PKCE-Verifier` header on `/callback`). Defaults to `false`, meaning the server manages the verifier internally — see Login Flow below. |
-| `REDIS_URL` | Redis connection string (used for refresh-token caching and OAuth `state` storage; falls back to an in-process cache if unset — not suitable for multi-instance deployments) |
-| `REFRESH_TOKEN_TTL` | TTL for refresh tokens (e.g., `24h`) |
+| `REDIS_URL` | Redis connection string (used for OAuth `state` storage, device secret caching, and cross-instance deduplication of `/callback` and `/refresh`; falls back to in-process equivalents if unset — not suitable for multi-instance deployments) |
 | `HTTP_MODE` | Set to `development` for dev features |
 | `ALLOW_REGISTRATION` | Set to `true` to enable user registration |
 | `PASS_OAUTH_TOKEN` | Set to `true` to pass OAuth provider tokens to the client (see Operational Scenarios). |

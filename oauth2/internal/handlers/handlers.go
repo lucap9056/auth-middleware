@@ -6,7 +6,7 @@ import (
 
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/health"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
@@ -17,7 +17,7 @@ import (
 type Dependencies struct {
 	DB           options.DB
 	JWTManager   *jwt.JWTManager
-	RefreshCache token.Cache
+	Flight       *flight.Group
 	StateCache   state.Cache
 	OAuth2Client login.OAuth2Client
 	Options      []options.Option
@@ -29,7 +29,7 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("GET /health", health.Handle)
 
 	if deps.DB != nil {
-		refreshHandler := refresh.New(deps.DB, deps.JWTManager, deps.RefreshCache, !opts.DevMode)
+		refreshHandler := refresh.New(deps.DB, deps.JWTManager, deps.Flight, !opts.DevMode)
 		mux.HandleFunc("POST /refresh", refreshHandler.Refresh)
 		mux.HandleFunc("POST /refresh-access", refreshHandler.RefreshAccess)
 
@@ -40,7 +40,7 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) {
 	}
 
 	if deps.OAuth2Client != nil {
-		loginHandler := login.New(deps.DB, deps.JWTManager, deps.StateCache, deps.OAuth2Client, opts)
+		loginHandler := login.New(deps.DB, deps.JWTManager, deps.StateCache, deps.OAuth2Client, deps.Flight, opts)
 		mux.HandleFunc("GET /login", loginHandler.Login)
 		mux.HandleFunc("GET /callback", loginHandler.Callback)
 		log.Println("OAuth2 is enabled")

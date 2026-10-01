@@ -15,7 +15,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/device"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
-	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
@@ -43,7 +43,6 @@ const (
 	EnvAllowRegistration  = "ALLOW_REGISTRATION"
 	EnvPassOAuthToken     = "PASS_OAUTH_TOKEN"
 	EnvRedisURL           = "REDIS_URL"
-	EnvRefreshTokenTTL    = "REFRESH_TOKEN_TTL"
 
 	DefaultHTTPAddress = ":80"
 	ModeDevelopment    = "development"
@@ -173,21 +172,12 @@ func main() {
 		log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider, httpAddress, mode)
 	}
 
-	var tokenCacheOpts []token.Option
-	refreshTokenTTL := os.Getenv(EnvRefreshTokenTTL)
-
-	if refreshTokenTTL != "" {
-		duration, err := time.ParseDuration(refreshTokenTTL)
-		if err != nil {
-			log.Fatalf("Invalid REFRESH_TOKEN_TTL: %v", err)
-		}
-		tokenCacheOpts = append(tokenCacheOpts, token.WithTTL(duration))
-	}
-
-	refreshCache, err := token.NewCache(redisClient, tokenCacheOpts...)
+	flightGroup, err := flight.New(flight.WithRedis(redisURL, 0))
 	if err != nil {
-		log.Fatalf("Failed to create refresh token cache: %v", err)
+		log.Fatalf("Failed to create flight group: %v", err)
 	}
+	defer flightGroup.Close()
+
 	stateCache, err := state.NewCache(redisClient)
 	if err != nil {
 		log.Fatalf("Failed to create state cache: %v", err)
@@ -213,7 +203,7 @@ func main() {
 	handlers.RegisterRoutes(mux, handlers.Dependencies{
 		DB:           handlerDB,
 		JWTManager:   jwtManager,
-		RefreshCache: refreshCache,
+		Flight:       flightGroup,
 		StateCache:   stateCache,
 		OAuth2Client: oauth2Client,
 		Options:      authOptions,

@@ -6,6 +6,11 @@ import (
 	"net/http"
 )
 
+type TokenPair struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
 type Body[T any] struct {
 	Success bool `json:"success"`
 	Message T    `json:"message"`
