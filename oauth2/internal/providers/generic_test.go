@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,9 +24,10 @@ func newGenericServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc)
 func TestGenericProvider_GetUser_Success(t *testing.T) {
 	server := newGenericServer(t, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(GenericUser{
-			ID:    "generic-001",
-			Email: "user@example.com",
-			Name:  "Generic User",
+			ID:            "generic-001",
+			Email:         "user@example.com",
+			EmailVerified: true,
+			Name:          "Generic User",
 		})
 	}, nil)
 	defer server.Close()
@@ -44,6 +46,35 @@ func TestGenericProvider_GetUser_Success(t *testing.T) {
 	}
 	if user.Name != "Generic User" {
 		t.Errorf("Name: got %q, want %q", user.Name, "Generic User")
+	}
+}
+
+func TestGenericProvider_GetUser_EmailVerification(t *testing.T) {
+	cases := []struct {
+		name        string
+		userinfo    string
+		opts        []Option
+		expectedErr error
+	}{
+		{"verified as string", `{"id":"1","email":"u@example.com","email_verified":"true"}`, nil, nil},
+		{"explicitly unverified", `{"id":"1","email":"u@example.com","email_verified":false}`, nil, ErrUnverifiedEmail},
+		{"verification absent", `{"id":"1","email":"u@example.com"}`, nil, ErrUnverifiedEmail},
+		{"unverified allowed", `{"id":"1","email":"u@example.com"}`, []Option{WithAllowUnverifiedEmail(true)}, nil},
+		{"empty email even when allowed", `{"id":"1","email":"","email_verified":true}`, []Option{WithAllowUnverifiedEmail(true)}, ErrMissingEmail},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newGenericServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.userinfo))
+			}, nil)
+			defer server.Close()
+
+			provider := NewGenericProvider(newTestConfig(server.URL), server.URL+"/userinfo", "", tc.opts...)
+			_, err := provider.GetUser(testContextWithClient(server.URL), newTestToken())
+			if !errors.Is(err, tc.expectedErr) {
+				t.Fatalf("got error %v, want %v", err, tc.expectedErr)
+			}
+		})
 	}
 }
 

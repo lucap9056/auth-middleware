@@ -48,9 +48,10 @@ func (s *oauthStub) handleToken(w http.ResponseWriter, _ *http.Request) {
 func (s *oauthStub) handleUserInfo(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"id":    s.UserID,
-		"email": s.Email,
-		"name":  s.Name,
+		"id":             s.UserID,
+		"email":          s.Email,
+		"email_verified": true,
+		"name":           s.Name,
 	})
 }
 
