@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const CookieName = "refresh_token"
@@ -26,15 +28,26 @@ func FromRequest(r *http.Request) (string, error) {
 }
 
 func SetCookie(w http.ResponseWriter, token string, secure bool) {
-	http.SetCookie(w, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     CookieName,
 		Value:    token,
 		Path:     "/",
-		Expires:  time.Now().Add(7 * 24 * time.Hour),
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
-	})
+	}
+	if expiresAt, ok := expiryOf(token); ok {
+		cookie.Expires = expiresAt
+	}
+	http.SetCookie(w, cookie)
+}
+
+func expiryOf(token string) (time.Time, bool) {
+	claims := &jwt.RegisteredClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil || claims.ExpiresAt == nil {
+		return time.Time{}, false
+	}
+	return claims.ExpiresAt.Time, true
 }
 
 func ClearCookie(w http.ResponseWriter) {
