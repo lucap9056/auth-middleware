@@ -25,18 +25,14 @@ type GitHubEmail struct {
 	Verified bool   `json:"verified"`
 }
 
-func WithGitHub(cfg *oauth2.Config) *oauth2.Config {
-	cfg.Scopes = []string{"read:user", "user:email"}
-	cfg.Endpoint = github.Endpoint
-	return cfg
-}
-
 type GitHubProvider struct {
 	config     *oauth2.Config
 	httpClient *http.Client
 }
 
 func NewGitHubProvider(config *oauth2.Config) *GitHubProvider {
+	config.Scopes = []string{"read:user", "user:email"}
+	config.Endpoint = github.Endpoint
 	return &GitHubProvider{config: config, httpClient: http.DefaultClient}
 }
 

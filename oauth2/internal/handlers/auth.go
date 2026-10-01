@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,6 +14,7 @@ import (
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/singleflight"
 )
@@ -43,17 +46,24 @@ type ExchangeResponse struct {
 	AuthToken   *token.TokenPair
 }
 
+type OAuth2Client interface {
+	AuthURL(state, verifier string) string
+	Exchange(ctx context.Context, code, verifier string) (*oauth2.Token, error)
+	GetUser(ctx context.Context, token *oauth2.Token) (*providers.Userinfo, error)
+	Revoke(ctx context.Context, token *oauth2.Token) error
+}
+
 type AuthHandler struct {
 	db                   DB
 	jwtManager           *jwt.JWTManager
 	refreshCache         token.Cache
 	stateCache           state.Cache
-	oauth2Handler        *OAuth2Handler
+	oauth2Client         OAuth2Client
 	config               *AuthConfig
 	exchangeSingleflight singleflight.Group
 }
 
-func NewAuthHandler(db DB, jwtManager *jwt.JWTManager, refreshCache token.Cache, stateCache state.Cache, oauth2Handler *OAuth2Handler, opts ...AuthOption) *AuthHandler {
+func NewAuthHandler(db DB, jwtManager *jwt.JWTManager, refreshCache token.Cache, stateCache state.Cache, oauth2Client OAuth2Client, opts ...AuthOption) *AuthHandler {
 	config := &AuthConfig{
 		DevMode:           false,
 		AllowRegistration: false,
@@ -64,13 +74,19 @@ func NewAuthHandler(db DB, jwtManager *jwt.JWTManager, refreshCache token.Cache,
 	}
 
 	return &AuthHandler{
-		db:            db,
-		jwtManager:    jwtManager,
-		refreshCache:  refreshCache,
-		stateCache:    stateCache,
-		oauth2Handler: oauth2Handler,
-		config:        config,
+		db:           db,
+		jwtManager:   jwtManager,
+		refreshCache: refreshCache,
+		stateCache:   stateCache,
+		oauth2Client: oauth2Client,
+		config:       config,
 	}
+}
+
+func generateState() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 func (h *AuthHandler) Health(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +96,7 @@ func (h *AuthHandler) Health(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
-	if h.oauth2Handler == nil {
+	if h.oauth2Client == nil {
 		sendJSONResponse(w, false, "OAuth2 login is not available", http.StatusServiceUnavailable, nil)
 		return
 	}
@@ -93,7 +109,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := h.oauth2Handler.AuthURL(stateVal, verifier)
+	url := h.oauth2Client.AuthURL(stateVal, verifier)
 	resp := &LoginResponse{URL: url}
 	if h.config.ClientPKCE {
 		resp.Verifier = verifier
@@ -103,7 +119,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
-	if h.oauth2Handler == nil {
+	if h.oauth2Client == nil {
 		sendJSONResponse(w, false, "OAuth2 callback is not available", http.StatusServiceUnavailable, nil)
 		return
 	}
@@ -191,7 +207,7 @@ func (h *AuthHandler) exchangeSingleflightDo(code, state, device, headerVerifier
 
 		exchangeCtx, exchangeCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer exchangeCancel()
-		oauth2Token, err := h.oauth2Handler.Exchange(exchangeCtx, code, verifier)
+		oauth2Token, err := h.oauth2Client.Exchange(exchangeCtx, code, verifier)
 		if err != nil {
 			if err == context.DeadlineExceeded {
 				return &ExchangeResponse{
@@ -216,7 +232,7 @@ func (h *AuthHandler) exchangeSingleflightDo(code, state, device, headerVerifier
 		if h.db != nil {
 			getUserCtx, getUserCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer getUserCancel()
-			user, err := h.oauth2Handler.GetUser(getUserCtx, oauth2Token)
+			user, err := h.oauth2Client.GetUser(getUserCtx, oauth2Token)
 			if err != nil {
 				return &ExchangeResponse{
 					Success: false,
@@ -286,7 +302,7 @@ func (h *AuthHandler) exchangeSingleflightDo(code, state, device, headerVerifier
 			if !h.config.PassOAuthToken {
 				revokeCtx, revokeCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer revokeCancel()
-				h.oauth2Handler.Revoke(revokeCtx, oauth2Token)
+				h.oauth2Client.Revoke(revokeCtx, oauth2Token)
 			}
 
 			return &ExchangeResponse{

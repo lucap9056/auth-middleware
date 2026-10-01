@@ -23,21 +23,17 @@ type GoogleUser struct {
 	Locale        string `json:"locale"`
 }
 
-func WithGoogle(cfg *oauth2.Config) *oauth2.Config {
-	cfg.Scopes = []string{
-		"https://www.googleapis.com/auth/userinfo.email",
-		"https://www.googleapis.com/auth/userinfo.profile",
-	}
-	cfg.Endpoint = google.Endpoint
-	return cfg
-}
-
 type GoogleProvider struct {
 	config     *oauth2.Config
 	httpClient *http.Client
 }
 
 func NewGoogleProvider(config *oauth2.Config) *GoogleProvider {
+	config.Scopes = []string{
+		"https://www.googleapis.com/auth/userinfo.email",
+		"https://www.googleapis.com/auth/userinfo.profile",
+	}
+	config.Endpoint = google.Endpoint
 	return &GoogleProvider{config: config, httpClient: http.DefaultClient}
 }
 

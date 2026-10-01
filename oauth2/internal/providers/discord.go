@@ -28,18 +28,14 @@ type DiscordUser struct {
 	PublicFlags   int    `json:"public_flags"`
 }
 
-func WithDiscord(cfg *oauth2.Config) *oauth2.Config {
-	cfg.Scopes = []string{discord.ScopeIdentify, discord.ScopeEmail}
-	cfg.Endpoint = discord.Endpoint
-	return cfg
-}
-
 type DiscordProvider struct {
 	config     *oauth2.Config
 	httpClient *http.Client
 }
 
 func NewDiscordProvider(config *oauth2.Config) *DiscordProvider {
+	config.Scopes = []string{discord.ScopeIdentify, discord.ScopeEmail}
+	config.Endpoint = discord.Endpoint
 	return &DiscordProvider{config: config, httpClient: http.DefaultClient}
 }
 

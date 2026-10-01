@@ -17,6 +17,8 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"github.com/lucap9056/go-envfile/envfile"
 	"github.com/lucap9056/go-lifecycle/lifecycle"
 )
@@ -110,7 +112,7 @@ func main() {
 	enableOAuth2 := clientID != "" && clientSecret != "" && redirectURL != ""
 	oidcIssuer := os.Getenv(EnvOIDCIssuerURL)
 
-	var oauth2Handler *handlers.OAuth2Handler
+	var oauth2Client handlers.OAuth2Client
 
 	switch {
 	case oidcIssuer != "" && !enableOAuth2:
@@ -125,11 +127,17 @@ func main() {
 		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer discoveryCancel()
 
-		var err error
-		oauth2Handler, err = handlers.NewOIDCHandler(discoveryCtx, oidcIssuer, clientID, clientSecret, redirectURL, scopes)
+		oidcClient, err := oauthclient.NewOIDC(discoveryCtx, oauthclient.OIDCConfig{
+			IssuerURL:    oidcIssuer,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			RedirectURL:  redirectURL,
+			Scopes:       scopes,
+		})
 		if err != nil {
 			log.Fatalf("OIDC setup failed: %v", err)
 		}
+		oauth2Client = oidcClient
 		enableOAuth2 = true
 		log.Printf("Starting OIDC server (Issuer: %s) on %s (Mode: %s)", oidcIssuer, httpAddress, mode)
 
@@ -141,8 +149,7 @@ func main() {
 		scopesStr := os.Getenv(EnvOAuth2Scopes)
 		provider := os.Getenv(EnvOAuth2Provider)
 
-		isGeneric := (provider != handlers.ProviderDiscordName && provider != handlers.ProviderGitHubName && provider != handlers.ProviderGoogleName)
-		if isGeneric && (authURL == "" || tokenURL == "" || userinfoURL == "") {
+		if !providers.IsBuiltin(provider) && (authURL == "" || tokenURL == "" || userinfoURL == "") {
 			log.Fatalln("Generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
 		}
 
@@ -150,7 +157,17 @@ func main() {
 		for i := range scopes {
 			scopes[i] = strings.TrimSpace(scopes[i])
 		}
-		oauth2Handler = handlers.NewOAuth2Handler(provider, clientID, clientSecret, redirectURL, authURL, tokenURL, scopes, userinfoURL, revokeURL)
+		oauth2Client = oauthclient.New(oauthclient.Config{
+			Provider:     provider,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			RedirectURL:  redirectURL,
+			AuthURL:      authURL,
+			TokenURL:     tokenURL,
+			UserinfoURL:  userinfoURL,
+			RevokeURL:    revokeURL,
+			Scopes:       scopes,
+		})
 
 		log.Printf("Starting OAuth2 server (Provider: %s) on %s (Mode: %s)", provider, httpAddress, mode)
 	}
@@ -190,7 +207,7 @@ func main() {
 		authOptions = append(authOptions, handlers.WithClientPKCE(true))
 	}
 
-	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Handler, authOptions...)
+	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Client, authOptions...)
 
 	mux := http.NewServeMux()
 

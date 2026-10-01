@@ -13,6 +13,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/token"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 )
 
 // oauthStub is a minimal in-process OAuth2 provider for testing.
@@ -184,17 +185,17 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...handlers.AuthOption) *testE
 		handlerDB = db
 	}
 
-	oauth2Handler := handlers.NewOAuth2Handler(
-		"generic",
-		"test-client",
-		"test-secret",
-		"http://localhost/callback",
-		stub.URL+"/authorize",
-		stub.URL+"/token",
-		[]string{"email"},
-		stub.URL+"/userinfo",
-		stub.URL+"/revoke",
-	)
+	oauth2Client := oauthclient.New(oauthclient.Config{
+		Provider:     "generic",
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+		RedirectURL:  "http://localhost/callback",
+		AuthURL:      stub.URL + "/authorize",
+		TokenURL:     stub.URL + "/token",
+		UserinfoURL:  stub.URL + "/userinfo",
+		RevokeURL:    stub.URL + "/revoke",
+		Scopes:       []string{"email"},
+	})
 
 	jwtManager := jwt.NewJWTManager(jwtDB)
 	refreshCache, err := token.NewCache(nil)
@@ -205,7 +206,7 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...handlers.AuthOption) *testE
 	if err != nil {
 		panic(err)
 	}
-	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Handler, opts...)
+	authHandler := handlers.NewAuthHandler(handlerDB, jwtManager, refreshCache, stateCache, oauth2Client, opts...)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", authHandler.Health)
