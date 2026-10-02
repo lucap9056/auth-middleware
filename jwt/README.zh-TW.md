@@ -1,59 +1,110 @@
-# JWT 模組
+# JWT Module
 
-此模組為 `auth-middleware` 專案提供 JWT (JSON Web Token) 管理功能。它處理存取令牌（Access Token）與重新整理令牌（Refresh Token）的生成、驗證與生命週期管理，並透過資料庫管理裝置專屬的簽署金鑰，以提升安全性。
+此 module 負責簽發與驗證 access token 與 refresh token。每個 device 使用各自的 signing secret。
 
-## 特色
+## 安裝
 
-- **裝置綁定安全性**: 簽署金鑰透過資料庫介面管理，確保每個裝置擁有唯一的秘密。
-- **令牌生命週期**: 完整支援 Access Token 與 Refresh Token 的產生與驗證。
-- **介面導向**: 可輕易整合任何實作 `Database` 介面的後端儲存系統。
+```bash
+go get github.com/lucap9056/auth-middleware/jwt/v2
+```
 
-## 使用方式
+## Database
 
-要使用此模組，您必須實作 `Database` 介面。可以在此介面的實作中整合快取機制（例如 Redis）以提升效能。
+`JWTManager` 透過 `Database` interface 讀寫 device 的 secret 與 generation：
 
 ```go
 type Database interface {
-	UpdateDeviceSecret(deviceID, secret string) error
-	GetDeviceSecret(deviceID string) (string, error)
+	UpdateDeviceSecret(deviceID string) (int, error)
+	GetDeviceSecret(deviceID string) (string, int, error)
 }
 ```
 
-### 範例
+| Method | 行為 |
+|---|---|
+| `UpdateDeviceSecret(deviceID)` | 將 device 的 generation 加一並回傳新值；device 不存在時回傳 error |
+| `GetDeviceSecret(deviceID)` | 回傳 device 的 secret 與目前的 generation |
+
+## 使用方式
 
 ```go
-import "github.com/lucap9056/auth-middleware/jwt"
+import "github.com/lucap9056/auth-middleware/jwt/v2"
 
-// 使用您的資料庫實作進行初始化
-manager := jwt.NewJWTManager(db)
+manager := jwt.NewJWTManager(db,
+	jwt.WithIssuer("auth-service"),
+	jwt.WithAudience("web"),
+)
+```
 
-// 生成 Refresh Token
-token, err := manager.GenerateRefresh(userID, deviceID)
+### 登入
 
-// 生成 Access Token
+secret 由呼叫端產生並存入 database，再傳給 `GenerateRefresh` 簽章。新建立的 device generation 為 `1`：
+
+```go
+secret := randomHex(32)
+deviceID, err := db.SaveDeviceSecret(userEmail, deviceName, secret)
+
+refreshToken, err := manager.GenerateRefresh(userEmail, deviceID, secret, 1)
 accessToken, err := manager.GenerateAccess(refreshToken, username)
+```
 
-// 驗證 Access Token
+### Rotate refresh token
+
+`RotateRefresh` 回傳的 claims 在成功時為新 refresh token 的 claims，驗證失敗時為傳入 token 的 claims：
+
+```go
+newRefreshToken, claims, err := manager.RotateRefresh(refreshToken)
+
+username := lookupUsername(claims.Subject)
+accessToken, err := manager.GenerateAccess(newRefreshToken, username)
+```
+
+### 驗證 access token
+
+```go
 claims, err := manager.VerifyAccess(accessToken)
 ```
 
-## Token 有效時長
+## Token
 
-| Option | 環境變數 (透過 `FromEnv`) | 預設值 |
-| :--- | :--- | :--- |
-| `WithAccessTokenDuration(d)` | `JWT_ACCESS_TOKEN_DURATION` | `15m` |
-| `WithRefreshTokenDuration(d)` | `JWT_REFRESH_TOKEN_DURATION` | `7d` |
+兩種 token 皆以 device 的 secret 使用 HS256 簽章，並以 JWS header 的 `typ` 區分用途（RFC 8725 §3.11）：
 
-環境變數接受 Go duration 格式（`30m`、`12h`）或整數天數（`7d`）。
+| Token | `typ` | Claims |
+|---|---|---|
+| Access token | `access+jwt` | `sub`、`user_email`、`username`、`device_id`、`generation`、`iss`、`aud`、`iat`、`exp` |
+| Refresh token | `refresh+jwt` | `sub`、`device_id`、`generation`、`iss`、`aud`、`iat`、`exp` |
 
-```go
-manager := jwt.NewJWTManager(db, jwt.FromEnv())
-```
+`sub` 為使用者 email。
+
+### 驗證規則
+
+`VerifyAccess`、`VerifyRefresh` 與 `GenerateAccess`（驗證傳入的 refresh token）依序檢查：
+
+1. `typ` 符合 token 種類，不分大小寫，可帶 `application/` 前綴
+2. device 存在
+3. 簽章正確且未過期
+4. 有設定 `WithIssuer` / `WithAudience` 時，`iss` / `aud` 必須相符
+5. token 的 `generation` 等於 device 目前的 generation
+
+### Errors
+
+| Error | 情況 |
+|---|---|
+| `ErrTokenRevoked` | 只有第 5 項不符，代表 token 由此服務簽發但已被 rotate |
+| `ErrInvalidToken` | 其餘所有驗證失敗 |
+
+`ErrTokenRevoked` wrap 了 `ErrInvalidToken`，因此 `errors.Is(err, jwt.ErrInvalidToken)` 對兩者皆成立。需要區分時先判斷 `ErrTokenRevoked`。
+
+## Options
+
+| Option | 預設值 | 說明 |
+|---|---|---|
+| `WithAccessTokenDuration(d)` | `15m` | access token 有效時長 |
+| `WithRefreshTokenDuration(d)` | `7d` | refresh token 有效時長 |
+| `WithIssuer(iss)` | 空字串 | 寫入 `iss`，非空時驗證必須相符 |
+| `WithAudience(aud)` | 空字串 | 寫入 `aud`，非空時驗證必須包含 |
 
 ## 測試
 
-在模組目錄中執行測試：
-
 ```bash
-go test -v ./...
+go test ./...
 ```
