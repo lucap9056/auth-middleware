@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ var (
 	ErrInvalidToken            = errors.New("invalid or expired token")
 	ErrUnexpectedSigningMethod = errors.New("unexpected token signing method")
 	ErrTypeAssertionFailed     = errors.New("failed to assert token claims")
+	ErrTokenRevoked            = fmt.Errorf("%w: token generation has been revoked", ErrInvalidToken)
 )
 
 const (
@@ -189,7 +191,7 @@ func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, str
 	}
 
 	if generation != gen {
-		return claims, "", ErrInvalidToken
+		return claims, "", ErrTokenRevoked
 	}
 
 	return claims, secret, nil
