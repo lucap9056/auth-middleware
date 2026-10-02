@@ -3,17 +3,21 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/lucap9056/auth-middleware/database/v2/schema"
 )
 
 const schemaAdvisoryLockKey int64 = 0x6175746864657669
 
+var ErrUnsupportedDriver = errors.New("database requires a *sql.DB backed by the pgx stdlib driver")
+
 type Database struct {
 	db     *sql.DB
+	ownsDB bool
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -24,27 +28,34 @@ func NewDatabase(dsn string, opts ...Option) (*Database, error) {
 		return nil, err
 	}
 
-	cfg := defaultOptions()
-	for _, opt := range opts {
-		opt(cfg)
-	}
-
+	cfg := newOptions(opts)
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
-
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
-
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-
 	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 
-	if err := db.Ping(); err != nil {
+	d, err := open(db, cfg, true)
+	if err != nil {
 		db.Close()
+		return nil, err
+	}
+	return d, nil
+}
+
+func New(db *sql.DB, opts ...Option) (*Database, error) {
+	if _, ok := db.Driver().(*stdlib.Driver); !ok {
+		return nil, ErrUnsupportedDriver
+	}
+	return open(db, newOptions(opts), false)
+}
+
+func open(db *sql.DB, cfg *options, ownsDB bool) (*Database, error) {
+	if err := db.Ping(); err != nil {
 		return nil, err
 	}
 
 	if cfg.AutoCreateSchema {
 		if err := createSchema(db, cfg.Schema); err != nil {
-			db.Close()
 			return nil, err
 		}
 	}
@@ -53,6 +64,7 @@ func NewDatabase(dsn string, opts ...Option) (*Database, error) {
 
 	d := &Database{
 		db:     db,
+		ownsDB: ownsDB,
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -116,5 +128,8 @@ func (d *Database) startCleanupWorker(interval time.Duration) {
 
 func (d *Database) Close() error {
 	d.cancel()
+	if !d.ownsDB {
+		return nil
+	}
 	return d.db.Close()
 }
