@@ -2,35 +2,44 @@ package jwt
 
 import "errors"
 
+var errDeviceNotFound = errors.New("device not found")
+
+type mockDevice struct {
+	secret     string
+	generation int
+}
+
 type MockDatabase struct {
-	secrets map[string]string
+	devices   map[string]*mockDevice
+	updateErr error
 }
 
 func NewMockDatabase() *MockDatabase {
 	return &MockDatabase{
-		secrets: make(map[string]string),
+		devices: make(map[string]*mockDevice),
 	}
 }
 
-func (db *MockDatabase) UpdateDeviceSecret(deviceID, secret string) error {
-	db.secrets[deviceID] = secret
-	return nil
+func (db *MockDatabase) AddDevice(deviceID, secret string) {
+	db.devices[deviceID] = &mockDevice{secret: secret, generation: 1}
 }
 
-func (db *MockDatabase) GetDeviceSecret(deviceID string) (string, error) {
-	secret, ok := db.secrets[deviceID]
+func (db *MockDatabase) UpdateDeviceSecret(deviceID string) (int, error) {
+	if db.updateErr != nil {
+		return 0, db.updateErr
+	}
+	device, ok := db.devices[deviceID]
 	if !ok {
-		return "", errors.New("device secret not found")
+		return 0, errDeviceNotFound
 	}
-	return secret, nil
+	device.generation++
+	return device.generation, nil
 }
 
-type MockErrDatabase struct {
-	updateErr error
-	getErr    error
-}
-
-func (db *MockErrDatabase) UpdateDeviceSecret(_, _ string) error { return db.updateErr }
-func (db *MockErrDatabase) GetDeviceSecret(_ string) (string, error) {
-	return "", db.getErr
+func (db *MockDatabase) GetDeviceSecret(deviceID string) (string, int, error) {
+	device, ok := db.devices[deviceID]
+	if !ok {
+		return "", 0, errDeviceNotFound
+	}
+	return device.secret, device.generation, nil
 }

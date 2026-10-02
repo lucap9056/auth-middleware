@@ -1,8 +1,6 @@
 package jwt
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"time"
 
@@ -16,19 +14,21 @@ var (
 )
 
 type Database interface {
-	UpdateDeviceSecret(deviceID, secret string) error
-	GetDeviceSecret(deviceID string) (string, error)
+	UpdateDeviceSecret(deviceID string) (int, error)
+	GetDeviceSecret(deviceID string) (string, int, error)
 }
 
 type AccessClaims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	DeviceID string `json:"device_id"`
+	Username   string `json:"username"`
+	UserEmail  string `json:"user_email"`
+	DeviceID   string `json:"device_id"`
+	Generation int    `json:"generation"`
 	jwt.RegisteredClaims
 }
 
 type RefreshClaims struct {
-	DeviceID string `json:"device_id"`
+	DeviceID   string `json:"device_id"`
+	Generation int    `json:"generation"`
 	jwt.RegisteredClaims
 }
 
@@ -50,118 +50,109 @@ func NewJWTManager(db Database, opts ...Option) *JWTManager {
 	}
 }
 
-func (m *JWTManager) GenerateRandomSecret() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+func (m *JWTManager) GenerateRefresh(userEmail, deviceID, secret string, gen int) (string, error) {
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, m.newRefreshClaims(userEmail, deviceID, gen)).SignedString([]byte(secret))
 }
 
-func (m *JWTManager) GenerateRefresh(userID, deviceID string, providedSecret ...string) (string, error) {
-	var finalSecret string
-
-	if len(providedSecret) > 0 && providedSecret[0] != "" {
-		finalSecret = providedSecret[0]
-	} else {
-		finalSecret = m.GenerateRandomSecret()
-
-		if err := m.db.UpdateDeviceSecret(deviceID, finalSecret); err != nil {
-			return "", err
-		}
-	}
-
-	claims := RefreshClaims{
-		DeviceID: deviceID,
+func (m *JWTManager) newRefreshClaims(userEmail, deviceID string, gen int) *RefreshClaims {
+	return &RefreshClaims{
+		DeviceID:   deviceID,
+		Generation: gen,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID,
+			Subject:   userEmail,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.config.RefreshTokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(finalSecret))
 }
 
 func (m *JWTManager) GenerateAccess(refreshToken, username string) (string, error) {
-	parser := jwt.NewParser()
-	unverifiedToken, _, err := parser.ParseUnverified(refreshToken, &RefreshClaims{})
+	claims, secret, err := verifyToken(m, refreshToken, &RefreshClaims{})
 	if err != nil {
-		return "", ErrInvalidToken
-	}
-
-	claims, ok := unverifiedToken.Claims.(*RefreshClaims)
-	if !ok {
-		return "", ErrInvalidToken
-	}
-
-	storedSecret, err := m.db.GetDeviceSecret(claims.DeviceID)
-	if err != nil {
-		return "", ErrInvalidToken
-	}
-
-	token, err := jwt.ParseWithClaims(refreshToken, &RefreshClaims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrUnexpectedSigningMethod
-		}
-		return []byte(storedSecret), nil
-	})
-
-	if err != nil || !token.Valid {
-		return "", ErrInvalidToken
+		return "", err
 	}
 
 	accessClaims := AccessClaims{
-		UserID:   claims.Subject,
-		Username: username,
-		DeviceID: claims.DeviceID,
+		Username:   username,
+		UserEmail:  claims.Subject,
+		DeviceID:   claims.DeviceID,
+		Generation: claims.Generation,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   claims.Subject,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.config.AccessTokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
 
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(storedSecret))
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(secret))
 }
+
 func (m *JWTManager) VerifyAccess(accessToken string) (*AccessClaims, error) {
-	return verifyToken(m, accessToken, &AccessClaims{})
+	claims, _, err := verifyToken(m, accessToken, &AccessClaims{})
+	return claims, err
 }
 
 func (m *JWTManager) VerifyRefresh(refreshToken string) (*RefreshClaims, error) {
-	return verifyToken(m, refreshToken, &RefreshClaims{})
+	claims, _, err := verifyToken(m, refreshToken, &RefreshClaims{})
+	return claims, err
 }
 
-func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, error) {
+func (m *JWTManager) RotateRefresh(refreshToken string) (string, *RefreshClaims, error) {
+	claims, secret, err := verifyToken(m, refreshToken, &RefreshClaims{})
+	if err != nil {
+		return "", claims, err
+	}
+
+	gen, err := m.db.UpdateDeviceSecret(claims.DeviceID)
+	if err != nil {
+		return "", claims, err
+	}
+
+	newClaims := m.newRefreshClaims(claims.Subject, claims.DeviceID, gen)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, newClaims).SignedString([]byte(secret))
+	return token, newClaims, err
+}
+
+func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, string, error) {
 	parser := jwt.NewParser()
 
 	_, _, err := parser.ParseUnverified(tokenStr, claims)
 	if err != nil {
-		return claims, ErrInvalidToken
+		return claims, "", ErrInvalidToken
 	}
 
 	var deviceID string
+	var generation int
 	switch c := any(claims).(type) {
 	case *AccessClaims:
 		deviceID = c.DeviceID
+		generation = c.Generation
 	case *RefreshClaims:
 		deviceID = c.DeviceID
+		generation = c.Generation
 	default:
-		return claims, ErrInvalidToken
+		return claims, "", ErrInvalidToken
 	}
 
-	storedSecret, err := m.db.GetDeviceSecret(deviceID)
+	secret, gen, err := m.db.GetDeviceSecret(deviceID)
 	if err != nil {
-		return claims, ErrInvalidToken
+		return claims, "", ErrInvalidToken
 	}
 
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, ErrUnexpectedSigningMethod
 		}
-		return []byte(storedSecret), nil
+		return []byte(secret), nil
 	})
 
 	if err != nil || !token.Valid {
-		return claims, ErrInvalidToken
+		return claims, "", ErrInvalidToken
 	}
 
-	return claims, nil
+	if generation != gen {
+		return claims, "", ErrInvalidToken
+	}
+
+	return claims, secret, nil
 }
