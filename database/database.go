@@ -38,6 +38,7 @@ func NewDatabase(dsn string, opts ...Option) (*Database, error) {
 	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return nil, err
 	}
 
