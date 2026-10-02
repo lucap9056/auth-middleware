@@ -7,7 +7,10 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/lucap9056/auth-middleware/database/v2/schema"
 )
+
+const schemaAdvisoryLockKey int64 = 0x6175746864657669
 
 type Database struct {
 	db     *sql.DB
@@ -15,7 +18,7 @@ type Database struct {
 	cancel context.CancelFunc
 }
 
-func NewDatabase(dsn string, opts ...DatabaseOption) (*Database, error) {
+func NewDatabase(dsn string, opts ...Option) (*Database, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -38,6 +41,13 @@ func NewDatabase(dsn string, opts ...DatabaseOption) (*Database, error) {
 		return nil, err
 	}
 
+	if cfg.AutoCreateSchema {
+		if err := createSchema(db, cfg.Schema); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	d := &Database{
@@ -51,6 +61,27 @@ func NewDatabase(dsn string, opts ...DatabaseOption) (*Database, error) {
 	}
 
 	return d, nil
+}
+
+func createSchema(db *sql.DB, params *schema.Params) error {
+	schemaSQL, err := schema.Generate(params)
+	if err != nil {
+		return err
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("SELECT pg_advisory_xact_lock($1)", schemaAdvisoryLockKey); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (d *Database) cleanupOldDevices() (int64, error) {
