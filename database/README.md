@@ -33,14 +33,36 @@ if err != nil {
 defer db.Close()
 ```
 
+### Using an Existing Connection Pool
+
+If your application already has a `*sql.DB` connected to the same PostgreSQL, use `New` instead:
+
+```go
+sqlDB, err := sql.Open("pgx", dsn)
+if err != nil {
+	return err
+}
+defer sqlDB.Close()
+
+db, err := database.New(sqlDB, database.WithAutoCreateSchema(true))
+if err != nil {
+	return err
+}
+defer db.Close()
+```
+
+- The `*sql.DB` must use the pgx stdlib driver
+- The caller owns the `*sql.DB`: `Close()` only stops the cleanup worker
+- Connection pool options (`WithMaxOpenConns`, `WithMaxIdleConns`, `WithConnMaxLifetime`, `WithConnMaxIdleTime`) are ignored
+
 ## Options
 
 | Option | Default | Description |
 |---|---|---|
-| `WithMaxOpenConns(n)` | `20` | Maximum number of open connections |
-| `WithMaxIdleConns(n)` | `15` | Maximum number of idle connections |
-| `WithConnMaxLifetime(d)` | `5m` | Maximum lifetime of a connection |
-| `WithConnMaxIdleTime(d)` | `2m` | Maximum idle time of a connection |
+| `WithMaxOpenConns(n)` | `20` | Maximum number of open connections (`NewDatabase` only) |
+| `WithMaxIdleConns(n)` | `15` | Maximum number of idle connections (`NewDatabase` only) |
+| `WithConnMaxLifetime(d)` | `5m` | Maximum lifetime of a connection (`NewDatabase` only) |
+| `WithConnMaxIdleTime(d)` | `2m` | Maximum idle time of a connection (`NewDatabase` only) |
 | `WithCleanupInterval(d)` | `24h` | Interval for deleting devices not updated in the last 7 days; `0` disables cleanup |
 | `WithAutoCreateSchema(bool)` | `false` | Create the `auth_user_devices` table and its indexes on startup |
 | `WithUserEmailReference(ref)` | `users(email)` | Users table and email column referenced by the foreign key |
@@ -59,7 +81,7 @@ The reference is case-insensitive and normalized to lowercase. `<type>` must mat
 
 ### Auto Create Schema
 
-When enabled, `NewDatabase` creates the schema, which requires DDL privileges. When disabled, create the schema yourself using `schema.Generate`, or with the SQL below.
+When enabled, `NewDatabase` and `New` create the schema, which requires DDL privileges. When disabled, create the schema yourself using `schema.Generate`, or with the SQL below.
 
 ## Schema
 
@@ -90,4 +112,4 @@ CREATE INDEX IF NOT EXISTS idx_auth_user_devices_updated_at ON auth_user_devices
 | `DeleteDevice(userEmail, deviceID)` | Deletes one device belonging to the user |
 | `DeleteAllDevices(userEmail)` | Deletes all devices of the user |
 | `DeleteAllDevicesReturningIDs(userEmail)` | Deletes all devices of the user and returns their IDs |
-| `Close()` | Stops the cleanup worker and closes the connection pool |
+| `Close()` | Stops the cleanup worker. Closes the connection pool only when it was opened by `NewDatabase` |
