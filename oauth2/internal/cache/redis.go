@@ -51,6 +51,10 @@ func (c *RedisClient) SetNX(ctx context.Context, key, value string, ttl time.Dur
 	return c.Do(ctx, c.B().Set().Key(key).Value(value).Nx().Px(ttl).Build()).Error()
 }
 
+func (c *RedisClient) GetDel(ctx context.Context, key string) rueidis.RedisResult {
+	return c.Do(ctx, c.B().Getdel().Key(key).Build())
+}
+
 func (c *RedisClient) Del(ctx context.Context, key string) error {
 	return c.Do(ctx, c.B().Del().Key(key).Build()).Error()
 }

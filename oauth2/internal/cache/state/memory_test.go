@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestMemoryCache_SetGetDelete(t *testing.T) {
+func TestMemoryCache_TakeIsSingleUse(t *testing.T) {
 	ctx := context.Background()
 	c, err := NewCache(nil)
 	if err != nil {
@@ -16,15 +16,11 @@ func TestMemoryCache_SetGetDelete(t *testing.T) {
 	if err := c.Set(ctx, "s1", "v1"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if got, _ := c.Get(ctx, "s1"); got != "v1" {
-		t.Fatalf("Get = %q; want v1", got)
+	if got, _ := c.Take(ctx, "s1"); got != "v1" {
+		t.Fatalf("Take = %q; want v1", got)
 	}
-
-	if err := c.Delete(ctx, "s1"); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if got, _ := c.Get(ctx, "s1"); got != "" {
-		t.Fatalf("Get after Delete = %q; want empty", got)
+	if got, _ := c.Take(ctx, "s1"); got != "" {
+		t.Fatalf("second Take = %q; want empty", got)
 	}
 }
 
@@ -38,8 +34,8 @@ func TestMemoryCache_Expires(t *testing.T) {
 	c.Set(ctx, "s1", "v1")
 	time.Sleep(100 * time.Millisecond)
 
-	if got, _ := c.Get(ctx, "s1"); got != "" {
-		t.Fatalf("Get after TTL = %q; want empty", got)
+	if got, _ := c.Take(ctx, "s1"); got != "" {
+		t.Fatalf("Take after TTL = %q; want empty", got)
 	}
 }
 

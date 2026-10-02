@@ -102,7 +102,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	if providerError := r.FormValue("error"); providerError != "" {
 		deleteCtx, deleteCancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer deleteCancel()
-		deleteErr := h.stateCache.Delete(deleteCtx, state)
+		_, deleteErr := h.stateCache.Take(deleteCtx, state)
 		response.JSON(w, false, "Authorization failed at provider", providerErrorStatus(providerError),
 			errors.Join(fmt.Errorf("provider returned error: %q", providerError), deleteErr))
 		return
@@ -178,7 +178,7 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 		stateCtx, stateCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer stateCancel()
 
-		verifier, err := h.stateCache.Get(stateCtx, state)
+		verifier, err := h.stateCache.Take(stateCtx, state)
 		if err != nil {
 			return &ExchangeResponse{
 				Success: false,
@@ -221,12 +221,6 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 				State:   http.StatusInternalServerError,
 			}, err
 		}
-
-		defer func() {
-			deferCtx, deferCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer deferCancel()
-			h.stateCache.Delete(deferCtx, state)
-		}()
 
 		if h.db != nil {
 			getUserCtx, getUserCancel := context.WithTimeout(ctx, 5*time.Second)

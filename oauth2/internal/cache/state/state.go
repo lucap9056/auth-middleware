@@ -9,8 +9,7 @@ import (
 
 type Cache interface {
 	Set(ctx context.Context, state, verifier string) error
-	Get(ctx context.Context, state string) (string, error)
-	Delete(ctx context.Context, state string) error
+	Take(ctx context.Context, state string) (string, error)
 }
 
 type config struct {
