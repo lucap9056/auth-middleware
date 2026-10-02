@@ -39,3 +39,8 @@ func Unauthorized(w http.ResponseWriter, challenge, message string, internalErr 
 	w.Header().Set("WWW-Authenticate", challenge)
 	JSON(w, false, message, http.StatusUnauthorized, internalErr)
 }
+
+func NoStoreJSON[T any](w http.ResponseWriter, success bool, message T, code int) {
+	w.Header().Set("Cache-Control", "no-store")
+	JSON(w, success, message, code, nil)
+}
