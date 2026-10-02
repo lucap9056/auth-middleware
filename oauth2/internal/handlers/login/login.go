@@ -87,7 +87,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.options.ClientPKCE {
 		resp.Verifier = verifier
 	}
-	response.JSON(w, true, resp, http.StatusOK, nil)
+	response.NoStoreJSON(w, true, resp, http.StatusOK)
 }
 
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +135,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Forwarded-Access-Token", res.OAuth2Token.AccessToken)
 		}
 
-		response.JSON(w, res.Success, res.AuthToken, res.State, nil)
+		response.NoStoreJSON(w, res.Success, res.AuthToken, res.State)
 		return
 	}
 
@@ -144,11 +144,11 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		if h.options.PassOAuthToken {
 			w.Header().Set("X-Forwarded-Refresh-Token", res.OAuth2Token.RefreshToken)
 			w.Header().Set("X-Forwarded-Access-Token", res.OAuth2Token.AccessToken)
-			response.JSON(w, res.Success, "Logged in", res.State, nil)
+			response.NoStoreJSON(w, res.Success, "Logged in", res.State)
 			return
 		}
 
-		response.JSON(w, res.Success, res.OAuth2Token, res.State, nil)
+		response.NoStoreJSON(w, res.Success, res.OAuth2Token, res.State)
 		return
 	}
 

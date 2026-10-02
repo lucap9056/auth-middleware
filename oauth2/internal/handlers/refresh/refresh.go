@@ -77,7 +77,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	refreshtoken.SetCookie(w, tokens.RefreshToken, h.secureCookie)
-	response.JSON(w, true, tokens, http.StatusOK, nil)
+	response.NoStoreJSON(w, true, tokens, http.StatusOK)
 }
 
 func (h *Handler) rotate(refreshToken string) (response.TokenPair, error) {
@@ -134,5 +134,5 @@ func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, true, accessToken, http.StatusOK, nil)
+	response.NoStoreJSON(w, true, accessToken, http.StatusOK)
 }
