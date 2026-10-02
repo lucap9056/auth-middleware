@@ -1,0 +1,69 @@
+name: CI JWT
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      jwt: ${{ steps.filter.outputs.jwt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            jwt:
+              - "jwt/**"
+              - ".github/workflows/ci-jwt.yml"
+
+  jwt:
+    needs: changes
+    if: needs.changes.outputs.jwt == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jwt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: jwt/go.mod
+          cache-dependency-path: jwt/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ${{ github.event_name == 'pull_request' && '-race' || '' }} ./...
+
+  jwt-required:
+    if: always()
+    needs:
+      - changes
+      - jwt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}; then
+            echo "one or more required jobs failed" >&2
+            exit 1
+          fi
