@@ -34,10 +34,10 @@ type RefreshClaims struct {
 
 type JWTManager struct {
 	db     Database
-	config *jwtOptions
+	config *options
 }
 
-func NewJWTManager(db Database, opts ...JWTOption) *JWTManager {
+func NewJWTManager(db Database, opts ...Option) *JWTManager {
 	cfg := defaultOptions()
 
 	for _, opt := range opts {
