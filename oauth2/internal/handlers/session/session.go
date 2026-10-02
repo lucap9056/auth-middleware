@@ -26,14 +26,14 @@ func New(db options.DB, jwtManager *jwt.JWTManager) *Handler {
 func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		response.JSON(w, false, "Missing Bearer token", http.StatusUnauthorized, nil)
+		response.Unauthorized(w, response.BearerChallenge, "Missing Bearer token", nil)
 		return
 	}
 
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 	claims, err := h.jwtManager.VerifyAccess(tokenStr)
 	if err != nil {
-		response.JSON(w, false, "Invalid access token", http.StatusUnauthorized, err)
+		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid access token", err)
 		return
 	}
 
@@ -62,14 +62,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		response.JSON(w, false, "Missing Bearer token", http.StatusUnauthorized, nil)
+		response.Unauthorized(w, response.BearerChallenge, "Missing Bearer token", nil)
 		return
 	}
 
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 	claims, err := h.jwtManager.VerifyAccess(tokenStr)
 	if err != nil {
-		response.JSON(w, false, "Invalid access token", http.StatusUnauthorized, err)
+		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid access token", err)
 		return
 	}
 

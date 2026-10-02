@@ -52,7 +52,7 @@ func New(db options.DB, jwtManager *jwt.JWTManager, flightGroup *flight.Group, s
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := refreshtoken.FromRequest(r)
 	if err != nil {
-		response.JSON(w, false, "Invalid refresh token", http.StatusUnauthorized, err)
+		response.Unauthorized(w, response.BearerChallenge, "Invalid refresh token", err)
 		return
 	}
 
@@ -66,6 +66,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var rotateErr *rotateError
 		if errors.As(err, &rotateErr) {
+			if rotateErr.status == http.StatusUnauthorized {
+				w.Header().Set("WWW-Authenticate", response.InvalidTokenChallenge)
+			}
 			response.JSON(w, false, rotateErr.message, rotateErr.status, rotateErr.err)
 			return
 		}
@@ -109,19 +112,19 @@ func (h *Handler) rotate(refreshToken string) (response.TokenPair, error) {
 func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := refreshtoken.FromRequest(r)
 	if err != nil {
-		response.JSON(w, false, "Invalid refresh token", http.StatusUnauthorized, err)
+		response.Unauthorized(w, response.BearerChallenge, "Invalid refresh token", err)
 		return
 	}
 
 	claims, err := h.jwtManager.VerifyRefresh(refreshToken)
 	if err != nil {
-		response.JSON(w, false, "Invalid session or expired refresh token", http.StatusUnauthorized, err)
+		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid session or expired refresh token", err)
 		return
 	}
 
 	user, err := h.db.GetUserFromID(claims.Subject)
 	if err != nil {
-		response.JSON(w, false, "User not found", http.StatusUnauthorized, err)
+		response.Unauthorized(w, response.InvalidTokenChallenge, "User not found", err)
 		return
 	}
 

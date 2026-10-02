@@ -29,3 +29,13 @@ func JSON[T any](w http.ResponseWriter, success bool, message T, code int, inter
 		Message: message,
 	})
 }
+
+const (
+	BearerChallenge       = `Bearer`
+	InvalidTokenChallenge = `Bearer error="invalid_token"`
+)
+
+func Unauthorized(w http.ResponseWriter, challenge, message string, internalErr error) {
+	w.Header().Set("WWW-Authenticate", challenge)
+	JSON(w, false, message, http.StatusUnauthorized, internalErr)
+}
