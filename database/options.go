@@ -30,6 +30,14 @@ func defaultOptions() *options {
 	}
 }
 
+func newOptions(opts []Option) *options {
+	cfg := defaultOptions()
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	return cfg
+}
+
 func WithMaxOpenConns(n int) Option {
 	return func(o *options) {
 		o.MaxOpenConns = n

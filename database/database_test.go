@@ -1,12 +1,18 @@
 package database
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/lucap9056/auth-middleware/database/v2/schema"
 )
+
+const unreachableDSN = "postgres://user:pass@127.0.0.1:1/db?connect_timeout=1"
 
 func TestCreateSchema_RollbackOnFailure(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -43,5 +49,46 @@ func TestCreateSchema_InvalidParams(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestNew_RejectsNonPgxDriver(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := New(db); !errors.Is(err, ErrUnsupportedDriver) {
+		t.Fatalf("err = %v; want ErrUnsupportedDriver", err)
+	}
+}
+
+func TestNew_AcceptsPgxPool(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), unreachableDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+
+	if _, err := New(db); err == nil || errors.Is(err, ErrUnsupportedDriver) {
+		t.Fatalf("err = %v; want a connection error", err)
+	}
+}
+
+func TestNew_FailureKeepsCallerDBOpen(t *testing.T) {
+	db, err := sql.Open("pgx", unreachableDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := New(db); err == nil {
+		t.Fatal("expected connection error, got nil")
+	}
+	if err := db.Ping(); err == nil || err.Error() == "sql: database is closed" {
+		t.Fatalf("caller db should stay open, Ping err = %v", err)
 	}
 }

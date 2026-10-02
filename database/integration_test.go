@@ -322,3 +322,24 @@ func TestCleanupWorker_RemovesDevicesNotUpdatedFor7Days(t *testing.T) {
 		t.Error("device updated within 7 days was cleaned up")
 	}
 }
+
+func TestNew_SharesCallerDB(t *testing.T) {
+	env := newTestEnv(t)
+	env.createUsers(t, "a@example.com")
+
+	d, err := database.New(env.db,
+		database.WithAutoCreateSchema(true),
+		database.WithCleanupInterval(0),
+	)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mustSaveDevice(t, d, "a@example.com")
+
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := env.db.Ping(); err != nil {
+		t.Fatalf("caller db should stay open after Close: %v", err)
+	}
+}
