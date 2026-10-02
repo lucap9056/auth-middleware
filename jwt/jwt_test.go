@@ -6,212 +6,217 @@ import (
 	"time"
 )
 
-func TestJWTManager_GenerateRandomSecret(t *testing.T) {
+const (
+	testEmail    = "user@example.com"
+	testDeviceID = "device456"
+	testUsername = "testuser"
+	testSecret   = "device-secret"
+)
+
+func newTestManager(t *testing.T, opts ...Option) (*JWTManager, *MockDatabase) {
+	t.Helper()
 	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	secret1 := manager.GenerateRandomSecret()
-	secret2 := manager.GenerateRandomSecret()
-
-	if secret1 == "" || secret2 == "" {
-		t.Fatal("expected non-empty secrets")
-	}
-
-	if secret1 == secret2 {
-		t.Fatal("expected random secrets to be different")
-	}
-
-	if len(secret1) != 64 { // 32 bytes hex encoded = 64 chars
-		t.Errorf("expected secret length 64, got %d", len(secret1))
-	}
+	db.AddDevice(testDeviceID, testSecret)
+	return NewJWTManager(db, opts...), db
 }
 
-func TestJWTManager_VerifyAccess(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	userID := "user123"
-	deviceID := "device456"
-	username := "testuser"
-
-	refreshToken, err := manager.GenerateRefresh(userID, deviceID)
+func mustGenerateRefresh(t *testing.T, manager *JWTManager) string {
+	t.Helper()
+	token, err := manager.GenerateRefresh(testEmail, testDeviceID, testSecret, 1)
 	if err != nil {
 		t.Fatalf("failed to generate refresh token: %v", err)
 	}
+	return token
+}
 
-	accessToken, err := manager.GenerateAccess(refreshToken, username)
+func mustRotateRefresh(t *testing.T, manager *JWTManager, refreshToken string) string {
+	t.Helper()
+	token, _, err := manager.RotateRefresh(refreshToken)
+	if err != nil {
+		t.Fatalf("failed to rotate refresh token: %v", err)
+	}
+	return token
+}
+
+func mustGenerateAccess(t *testing.T, manager *JWTManager, refreshToken string) string {
+	t.Helper()
+	token, err := manager.GenerateAccess(refreshToken, testUsername)
 	if err != nil {
 		t.Fatalf("failed to generate access token: %v", err)
 	}
-
-	claims, err := manager.VerifyAccess(accessToken)
-	if err != nil {
-		t.Fatalf("failed to verify access token: %v", err)
-	}
-
-	if claims.UserID != userID {
-		t.Errorf("expected user ID %s, got %s", userID, claims.UserID)
-	}
-	if claims.Username != username {
-		t.Errorf("expected username %s, got %s", username, claims.Username)
-	}
-	if claims.DeviceID != deviceID {
-		t.Errorf("expected device ID %s, got %s", deviceID, claims.DeviceID)
-	}
+	return token
 }
 
 func TestJWTManager_VerifyRefresh(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
+	manager, db := newTestManager(t)
 
-	userID := "user123"
-	deviceID := "device456"
-
-	refreshToken, err := manager.GenerateRefresh(userID, deviceID)
-	if err != nil {
-		t.Fatalf("failed to generate refresh token: %v", err)
-	}
-
-	claims, err := manager.VerifyRefresh(refreshToken)
+	claims, err := manager.VerifyRefresh(mustGenerateRefresh(t, manager))
 	if err != nil {
 		t.Fatalf("failed to verify refresh token: %v", err)
 	}
 
-	if claims.DeviceID != deviceID {
-		t.Errorf("expected device ID %s, got %s", deviceID, claims.DeviceID)
+	if claims.DeviceID != testDeviceID {
+		t.Errorf("expected device ID %s, got %s", testDeviceID, claims.DeviceID)
 	}
-	if claims.Subject != userID {
-		t.Errorf("expected subject %s, got %s", userID, claims.Subject)
+	if claims.Subject != testEmail {
+		t.Errorf("expected subject %s, got %s", testEmail, claims.Subject)
+	}
+	if claims.Generation != 1 {
+		t.Errorf("expected generation 1, got %d", claims.Generation)
+	}
+	if db.devices[testDeviceID].generation != 1 {
+		t.Errorf("expected stored generation to stay 1, got %d", db.devices[testDeviceID].generation)
 	}
 }
 
-func TestJWTManager_GenerateRefresh_WithProvidedSecret(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
+func TestJWTManager_VerifyAccess(t *testing.T) {
+	manager, _ := newTestManager(t)
 
-	userID := "user1"
-	deviceID := "dev1"
-	secret := "my-fixed-secret"
-
-	token, err := manager.GenerateRefresh(userID, deviceID, secret)
+	refreshToken := mustGenerateRefresh(t, manager)
+	claims, err := manager.VerifyAccess(mustGenerateAccess(t, manager, refreshToken))
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("failed to verify access token: %v", err)
 	}
-	if token == "" {
-		t.Fatal("expected non-empty token")
+
+	if claims.UserEmail != testEmail {
+		t.Errorf("expected user email %s, got %s", testEmail, claims.UserEmail)
 	}
-	if _, exists := db.secrets[deviceID]; exists {
-		t.Error("provided secret path must not call UpdateDeviceSecret")
+	if claims.Subject != testEmail {
+		t.Errorf("expected subject %s, got %s", testEmail, claims.Subject)
+	}
+	if claims.Username != testUsername {
+		t.Errorf("expected username %s, got %s", testUsername, claims.Username)
+	}
+	if claims.DeviceID != testDeviceID {
+		t.Errorf("expected device ID %s, got %s", testDeviceID, claims.DeviceID)
+	}
+	if claims.Generation != 1 {
+		t.Errorf("expected generation 1, got %d", claims.Generation)
 	}
 }
 
-func TestJWTManager_GenerateRefresh_UpdateSecretError(t *testing.T) {
-	db := &MockErrDatabase{updateErr: errors.New("db down")}
-	manager := NewJWTManager(db)
+func TestJWTManager_RotateRefresh(t *testing.T) {
+	manager, db := newTestManager(t)
 
-	_, err := manager.GenerateRefresh("user1", "dev1")
-	if err == nil {
+	newRefresh, returned, err := manager.RotateRefresh(mustGenerateRefresh(t, manager))
+	if err != nil {
+		t.Fatalf("failed to rotate refresh token: %v", err)
+	}
+
+	verified, err := manager.VerifyRefresh(newRefresh)
+	if err != nil {
+		t.Fatalf("failed to verify rotated refresh token: %v", err)
+	}
+
+	for name, claims := range map[string]*RefreshClaims{"returned": returned, "verified": verified} {
+		if claims.Subject != testEmail {
+			t.Errorf("%s: expected subject %s, got %s", name, testEmail, claims.Subject)
+		}
+		if claims.DeviceID != testDeviceID {
+			t.Errorf("%s: expected device ID %s, got %s", name, testDeviceID, claims.DeviceID)
+		}
+		if claims.Generation != 2 {
+			t.Errorf("%s: expected generation 2, got %d", name, claims.Generation)
+		}
+	}
+	if db.devices[testDeviceID].generation != 2 {
+		t.Errorf("expected stored generation 2, got %d", db.devices[testDeviceID].generation)
+	}
+}
+
+func TestJWTManager_RotateRefresh_RevokedTokenDoesNotBumpGeneration(t *testing.T) {
+	manager, db := newTestManager(t)
+
+	oldRefresh := mustGenerateRefresh(t, manager)
+	mustRotateRefresh(t, manager, oldRefresh)
+
+	_, claims, err := manager.RotateRefresh(oldRefresh)
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("expected ErrInvalidToken, got %v", err)
+	}
+	if claims.DeviceID != testDeviceID {
+		t.Errorf("expected revoked token's device ID %s, got %s", testDeviceID, claims.DeviceID)
+	}
+	if db.devices[testDeviceID].generation != 2 {
+		t.Errorf("expected stored generation to stay 2, got %d", db.devices[testDeviceID].generation)
+	}
+}
+
+func TestJWTManager_RotateRefresh_UpdateError(t *testing.T) {
+	manager, db := newTestManager(t)
+	refreshToken := mustGenerateRefresh(t, manager)
+	db.updateErr = errors.New("db down")
+
+	if _, _, err := manager.RotateRefresh(refreshToken); err == nil {
 		t.Fatal("expected error when UpdateDeviceSecret fails")
 	}
 }
 
-func TestJWTManager_GenerateAccess_InvalidRefreshToken(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
+func TestJWTManager_RotatedRefreshTokenIsRevoked(t *testing.T) {
+	manager, _ := newTestManager(t)
 
-	_, err := manager.GenerateAccess("not-a-jwt", "username")
-	if err == nil {
-		t.Fatal("expected error for unparseable refresh token")
+	oldRefresh := mustGenerateRefresh(t, manager)
+	oldAccess := mustGenerateAccess(t, manager, oldRefresh)
+	newRefresh := mustRotateRefresh(t, manager, oldRefresh)
+
+	if _, err := manager.VerifyRefresh(oldRefresh); !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("expected rotated refresh token to be rejected, got %v", err)
+	}
+	if _, err := manager.GenerateAccess(oldRefresh, testUsername); !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("expected rotated refresh token to be unable to mint access token, got %v", err)
+	}
+	if _, err := manager.VerifyAccess(oldAccess); !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("expected access token of previous generation to be rejected, got %v", err)
+	}
+	if _, err := manager.VerifyRefresh(newRefresh); err != nil {
+		t.Errorf("expected new refresh token to be valid, got %v", err)
+	}
+	if _, err := manager.VerifyAccess(mustGenerateAccess(t, manager, newRefresh)); err != nil {
+		t.Errorf("expected new access token to be valid, got %v", err)
 	}
 }
 
-func TestJWTManager_GenerateAccess_DBGetError(t *testing.T) {
-	db := &MockErrDatabase{getErr: errors.New("db down")}
-	manager := NewJWTManager(db)
-
-	// Build a structurally valid refresh token signed with a known secret so
-	// ParseUnverified succeeds and we reach the GetDeviceSecret call.
-	realDB := NewMockDatabase()
-	realManager := NewJWTManager(realDB)
-	refreshToken, _ := realManager.GenerateRefresh("user1", "dev1")
-
-	_, err := manager.GenerateAccess(refreshToken, "username")
-	if err == nil {
-		t.Fatal("expected error when GetDeviceSecret fails")
-	}
-}
-
-func TestJWTManager_VerifyAccess_TamperedToken(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	refreshToken, _ := manager.GenerateRefresh("user1", "dev1")
-	accessToken, _ := manager.GenerateAccess(refreshToken, "username")
-
-	db.secrets["dev1"] = "different-secret"
-
-	_, err := manager.VerifyAccess(accessToken)
-	if err == nil {
-		t.Fatal("expected error when secret has changed (tampered)")
-	}
-}
-
-func TestJWTManager_VerifyRefresh_TamperedToken(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	refreshToken, _ := manager.GenerateRefresh("user1", "dev1")
-
-	db.secrets["dev1"] = "different-secret"
-
-	_, err := manager.VerifyRefresh(refreshToken)
-	if err == nil {
-		t.Fatal("expected error when secret has changed (tampered)")
-	}
-}
-
-func TestJWTManager_VerifyRefresh_ExpiredToken(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db,
-		WithRefreshTokenDuration(-time.Second),
-	)
-
-	token, err := manager.GenerateRefresh("user1", "dev1", "secret")
-	if err != nil {
-		t.Fatalf("unexpected error generating token: %v", err)
+func TestJWTManager_RejectsInvalidTokens(t *testing.T) {
+	tests := []struct {
+		name   string
+		verify func(t *testing.T) error
+	}{
+		{"malformed", func(t *testing.T) error {
+			manager, _ := newTestManager(t)
+			_, err := manager.VerifyAccess("not-a-jwt")
+			return err
+		}},
+		{"secret changed", func(t *testing.T) error {
+			manager, db := newTestManager(t)
+			refreshToken := mustGenerateRefresh(t, manager)
+			db.devices[testDeviceID].secret = "different-secret"
+			_, err := manager.VerifyRefresh(refreshToken)
+			return err
+		}},
+		{"missing device", func(t *testing.T) error {
+			manager, db := newTestManager(t)
+			refreshToken := mustGenerateRefresh(t, manager)
+			delete(db.devices, testDeviceID)
+			_, err := manager.VerifyRefresh(refreshToken)
+			return err
+		}},
+		{"refresh expired", func(t *testing.T) error {
+			manager, _ := newTestManager(t, WithRefreshTokenDuration(-time.Second))
+			_, err := manager.VerifyRefresh(mustGenerateRefresh(t, manager))
+			return err
+		}},
+		{"access expired", func(t *testing.T) error {
+			manager, _ := newTestManager(t, WithAccessTokenDuration(-time.Second))
+			_, err := manager.VerifyAccess(mustGenerateAccess(t, manager, mustGenerateRefresh(t, manager)))
+			return err
+		}},
 	}
 
-	// secret is not in db yet — seed it so GetDeviceSecret succeeds
-	db.secrets["dev1"] = "secret"
-
-	_, err = manager.VerifyRefresh(token)
-	if err == nil {
-		t.Fatal("expected error for expired token")
-	}
-}
-
-func TestJWTManager_VerifyAccess_InvalidString(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	_, err := manager.VerifyAccess("invalid-token")
-	if err == nil {
-		t.Fatal("expected error for invalid token string")
-	}
-}
-
-func TestJWTManager_VerifyRefresh_MissingDeviceSecret(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	userID := "user123"
-	deviceID := "device456"
-	token, _ := manager.GenerateRefresh(userID, deviceID)
-
-	delete(db.secrets, deviceID)
-
-	_, err := manager.VerifyRefresh(token)
-	if err == nil {
-		t.Fatal("expected error when device secret is missing")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.verify(t); !errors.Is(err, ErrInvalidToken) {
+				t.Fatalf("expected ErrInvalidToken, got %v", err)
+			}
+		})
 	}
 }
