@@ -48,7 +48,7 @@ func mustGenerateAccess(t *testing.T, manager *JWTManager, refreshToken string) 
 }
 
 func TestJWTManager_VerifyRefresh(t *testing.T) {
-	manager, db := newTestManager(t)
+	manager, db := newTestManager(t, WithIssuer("auth-service"), WithAudience("web"))
 
 	claims, err := manager.VerifyRefresh(mustGenerateRefresh(t, manager))
 	if err != nil {
@@ -61,6 +61,9 @@ func TestJWTManager_VerifyRefresh(t *testing.T) {
 	if claims.Subject != testEmail {
 		t.Errorf("expected subject %s, got %s", testEmail, claims.Subject)
 	}
+	if claims.Issuer != "auth-service" {
+		t.Errorf("expected issuer auth-service, got %s", claims.Issuer)
+	}
 	if claims.Generation != 1 {
 		t.Errorf("expected generation 1, got %d", claims.Generation)
 	}
@@ -70,7 +73,7 @@ func TestJWTManager_VerifyRefresh(t *testing.T) {
 }
 
 func TestJWTManager_VerifyAccess(t *testing.T) {
-	manager, _ := newTestManager(t)
+	manager, _ := newTestManager(t, WithIssuer("auth-service"), WithAudience("web"))
 
 	refreshToken := mustGenerateRefresh(t, manager)
 	claims, err := manager.VerifyAccess(mustGenerateAccess(t, manager, refreshToken))
@@ -96,7 +99,7 @@ func TestJWTManager_VerifyAccess(t *testing.T) {
 }
 
 func TestJWTManager_RotateRefresh(t *testing.T) {
-	manager, db := newTestManager(t)
+	manager, db := newTestManager(t, WithIssuer("auth-service"), WithAudience("web"))
 
 	newRefresh, returned, err := manager.RotateRefresh(mustGenerateRefresh(t, manager))
 	if err != nil {
@@ -114,6 +117,9 @@ func TestJWTManager_RotateRefresh(t *testing.T) {
 		}
 		if claims.DeviceID != testDeviceID {
 			t.Errorf("%s: expected device ID %s, got %s", name, testDeviceID, claims.DeviceID)
+		}
+		if claims.Issuer != "auth-service" {
+			t.Errorf("%s: expected issuer auth-service, got %s", name, claims.Issuer)
 		}
 		if claims.Generation != 2 {
 			t.Errorf("%s: expected generation 2, got %d", name, claims.Generation)
@@ -177,6 +183,13 @@ func TestJWTManager_RotatedRefreshTokenIsRevoked(t *testing.T) {
 }
 
 func TestJWTManager_RejectsInvalidTokens(t *testing.T) {
+	verifyRefreshWith := func(t *testing.T, opts ...Option) error {
+		issuer, db := newTestManager(t, WithIssuer("auth-service"), WithAudience("web"))
+		refreshToken := mustGenerateRefresh(t, issuer)
+		_, err := NewJWTManager(db, opts...).VerifyRefresh(refreshToken)
+		return err
+	}
+
 	tests := []struct {
 		name   string
 		verify func(t *testing.T) error
@@ -209,6 +222,12 @@ func TestJWTManager_RejectsInvalidTokens(t *testing.T) {
 			manager, _ := newTestManager(t, WithAccessTokenDuration(-time.Second))
 			_, err := manager.VerifyAccess(mustGenerateAccess(t, manager, mustGenerateRefresh(t, manager)))
 			return err
+		}},
+		{"issuer mismatch", func(t *testing.T) error {
+			return verifyRefreshWith(t, WithIssuer("other-service"), WithAudience("web"))
+		}},
+		{"audience mismatch", func(t *testing.T) error {
+			return verifyRefreshWith(t, WithIssuer("auth-service"), WithAudience("mobile"))
 		}},
 	}
 
