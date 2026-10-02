@@ -4,7 +4,7 @@
 
 ## 需求
 
-- **PostgreSQL 13+**
+- **PostgreSQL 14+**
 - **既有的 users table**：email column 必須是 `PRIMARY KEY` 或有 `UNIQUE` constraint，才能被 foreign key 參考
 
 ## 安裝

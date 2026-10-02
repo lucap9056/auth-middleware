@@ -4,7 +4,7 @@ This module stores device sessions for the `auth-middleware` project in PostgreS
 
 ## Requirements
 
-- **PostgreSQL 13+**
+- **PostgreSQL 14+**
 - **An existing users table** whose email column is a `PRIMARY KEY` or has a `UNIQUE` constraint, so a foreign key can reference it
 
 ## Installation
