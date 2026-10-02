@@ -71,7 +71,7 @@ func (p *GoogleProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Use
 func (p *GoogleProvider) Revoke(ctx context.Context, token *oauth2.Token) error {
 	const revokeURL = "https://oauth2.googleapis.com/revoke"
 	data := url.Values{}
-	data.Set("token", token.RefreshToken)
+	data.Set("token", revocableToken(token))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", revokeURL, strings.NewReader(data.Encode()))
 	if err != nil {
