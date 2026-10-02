@@ -1,4 +1,4 @@
-module github.com/lucap9056/auth-middleware/database
+module github.com/lucap9056/auth-middleware/database/v2
 
 go 1.24.0
 
