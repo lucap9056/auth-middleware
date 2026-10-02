@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -11,6 +12,11 @@ var (
 	ErrInvalidToken            = errors.New("invalid or expired token")
 	ErrUnexpectedSigningMethod = errors.New("unexpected token signing method")
 	ErrTypeAssertionFailed     = errors.New("failed to assert token claims")
+)
+
+const (
+	AccessTokenType  = "access+jwt"
+	RefreshTokenType = "refresh+jwt"
 )
 
 type Database interface {
@@ -51,7 +57,7 @@ func NewJWTManager(db Database, opts ...Option) *JWTManager {
 }
 
 func (m *JWTManager) GenerateRefresh(userEmail, deviceID, secret string, gen int) (string, error) {
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, m.newRefreshClaims(userEmail, deviceID, gen)).SignedString([]byte(secret))
+	return signToken(RefreshTokenType, m.newRefreshClaims(userEmail, deviceID, gen), secret)
 }
 
 func (m *JWTManager) newRefreshClaims(userEmail, deviceID string, gen int) *RefreshClaims {
@@ -88,7 +94,18 @@ func (m *JWTManager) GenerateAccess(refreshToken, username string) (string, erro
 		},
 	}
 
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(secret))
+	return signToken(AccessTokenType, accessClaims, secret)
+}
+
+func signToken(tokenType string, claims jwt.Claims, secret string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token.Header["typ"] = tokenType
+	return token.SignedString([]byte(secret))
+}
+
+func hasTokenType(token *jwt.Token, expected string) bool {
+	typ, _ := token.Header["typ"].(string)
+	return strings.TrimPrefix(strings.ToLower(typ), "application/") == expected
 }
 
 func (m *JWTManager) VerifyAccess(accessToken string) (*AccessClaims, error) {
@@ -113,7 +130,7 @@ func (m *JWTManager) RotateRefresh(refreshToken string) (string, *RefreshClaims,
 	}
 
 	newClaims := m.newRefreshClaims(claims.Subject, claims.DeviceID, gen)
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, newClaims).SignedString([]byte(secret))
+	token, err := signToken(RefreshTokenType, newClaims, secret)
 	return token, newClaims, err
 }
 
@@ -131,21 +148,27 @@ func (m *JWTManager) parserOptions() []jwt.ParserOption {
 func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, string, error) {
 	parser := jwt.NewParser()
 
-	_, _, err := parser.ParseUnverified(tokenStr, claims)
+	unverifiedToken, _, err := parser.ParseUnverified(tokenStr, claims)
 	if err != nil {
 		return claims, "", ErrInvalidToken
 	}
 
-	var deviceID string
+	var tokenType, deviceID string
 	var generation int
 	switch c := any(claims).(type) {
 	case *AccessClaims:
+		tokenType = AccessTokenType
 		deviceID = c.DeviceID
 		generation = c.Generation
 	case *RefreshClaims:
+		tokenType = RefreshTokenType
 		deviceID = c.DeviceID
 		generation = c.Generation
 	default:
+		return claims, "", ErrInvalidToken
+	}
+
+	if !hasTokenType(unverifiedToken, tokenType) {
 		return claims, "", ErrInvalidToken
 	}
 

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -229,12 +231,65 @@ func TestJWTManager_RejectsInvalidTokens(t *testing.T) {
 		{"audience mismatch", func(t *testing.T) error {
 			return verifyRefreshWith(t, WithIssuer("auth-service"), WithAudience("mobile"))
 		}},
+		{"access used as refresh", func(t *testing.T) error {
+			manager, _ := newTestManager(t)
+			_, err := manager.VerifyRefresh(mustGenerateAccess(t, manager, mustGenerateRefresh(t, manager)))
+			return err
+		}},
+		{"refresh used as access", func(t *testing.T) error {
+			manager, _ := newTestManager(t)
+			_, err := manager.VerifyAccess(mustGenerateRefresh(t, manager))
+			return err
+		}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.verify(t); !errors.Is(err, ErrInvalidToken) {
 				t.Fatalf("expected ErrInvalidToken, got %v", err)
+			}
+		})
+	}
+}
+
+func TestJWTManager_VerifyRefresh_TokenTypeVariants(t *testing.T) {
+	tests := []struct {
+		typ     string
+		wantErr bool
+	}{
+		{RefreshTokenType, false},
+		{"REFRESH+JWT", false},
+		{"application/refresh+jwt", false},
+		{"JWT", true},
+		{"", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.typ, func(t *testing.T) {
+			manager, db := newTestManager(t)
+			gen, _ := db.UpdateDeviceSecret(testDeviceID)
+
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, RefreshClaims{
+				DeviceID:   testDeviceID,
+				Generation: gen,
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject:   testEmail,
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				},
+			})
+			if tt.typ == "" {
+				delete(token.Header, "typ")
+			} else {
+				token.Header["typ"] = tt.typ
+			}
+			signed, err := token.SignedString([]byte(testSecret))
+			if err != nil {
+				t.Fatalf("failed to sign token: %v", err)
+			}
+
+			_, err = manager.VerifyRefresh(signed)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("typ %q: error = %v, wantErr %v", tt.typ, err, tt.wantErr)
 			}
 		})
 	}
