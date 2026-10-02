@@ -32,6 +32,7 @@ type OIDCConfig struct {
 type Client struct {
 	config        *oauth2.Config
 	provider      providers.Provider
+	authOptions   []oauth2.AuthCodeOption
 	issuer        string
 	requireIssuer bool
 }
@@ -50,9 +51,15 @@ func New(cfg Config, opts ...providers.Option) *Client {
 
 	provider := providers.New(cfg.Provider, config, cfg.UserinfoURL, cfg.RevokeURL, opts...)
 
+	var authOptions []oauth2.AuthCodeOption
+	if cfg.Provider == providers.GoogleName {
+		authOptions = append(authOptions, oauth2.AccessTypeOffline)
+	}
+
 	return &Client{
-		config:   config,
-		provider: provider,
+		config:      config,
+		provider:    provider,
+		authOptions: authOptions,
 	}
 }
 
@@ -81,19 +88,23 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig, opts ...providers.Option) (*Cl
 		},
 	}
 
+	var authOptions []oauth2.AuthCodeOption
+	if slices.Contains(scopes, "offline_access") {
+		authOptions = append(authOptions, oauth2.SetAuthURLParam("prompt", "consent"))
+	}
+
 	return &Client{
 		config:        config,
 		provider:      providers.NewOIDCProvider(config, discovery, opts...),
+		authOptions:   authOptions,
 		issuer:        discovery.Issuer,
 		requireIssuer: discovery.AuthorizationResponseIssParameterSupported,
 	}, nil
 }
 
 func (c *Client) AuthURL(state string, verifier string) string {
-	return c.config.AuthCodeURL(state,
-		oauth2.AccessTypeOffline,
-		oauth2.S256ChallengeOption(verifier),
-	)
+	options := append(slices.Clone(c.authOptions), oauth2.S256ChallengeOption(verifier))
+	return c.config.AuthCodeURL(state, options...)
 }
 
 func (c *Client) ValidateIssuer(iss string) error {
