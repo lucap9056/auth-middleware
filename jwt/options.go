@@ -7,6 +7,8 @@ import (
 type options struct {
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
+	Issuer               string
+	Audience             string
 }
 
 type Option func(*options)
@@ -27,5 +29,17 @@ func WithAccessTokenDuration(d time.Duration) Option {
 func WithRefreshTokenDuration(d time.Duration) Option {
 	return func(o *options) {
 		o.RefreshTokenDuration = d
+	}
+}
+
+func WithIssuer(issuer string) Option {
+	return func(o *options) {
+		o.Issuer = issuer
+	}
+}
+
+func WithAudience(audience string) Option {
+	return func(o *options) {
+		o.Audience = audience
 	}
 }

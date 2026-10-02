@@ -59,6 +59,8 @@ func (m *JWTManager) newRefreshClaims(userEmail, deviceID string, gen int) *Refr
 		DeviceID:   deviceID,
 		Generation: gen,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.config.Issuer,
+			Audience:  jwt.ClaimStrings{m.config.Audience},
 			Subject:   userEmail,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.config.RefreshTokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -78,6 +80,8 @@ func (m *JWTManager) GenerateAccess(refreshToken, username string) (string, erro
 		DeviceID:   claims.DeviceID,
 		Generation: claims.Generation,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.config.Issuer,
+			Audience:  jwt.ClaimStrings{m.config.Audience},
 			Subject:   claims.Subject,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.config.AccessTokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -113,6 +117,17 @@ func (m *JWTManager) RotateRefresh(refreshToken string) (string, *RefreshClaims,
 	return token, newClaims, err
 }
 
+func (m *JWTManager) parserOptions() []jwt.ParserOption {
+	var opts []jwt.ParserOption
+	if m.config.Issuer != "" {
+		opts = append(opts, jwt.WithIssuer(m.config.Issuer))
+	}
+	if m.config.Audience != "" {
+		opts = append(opts, jwt.WithAudience(m.config.Audience))
+	}
+	return opts
+}
+
 func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, string, error) {
 	parser := jwt.NewParser()
 
@@ -144,7 +159,7 @@ func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, str
 			return nil, ErrUnexpectedSigningMethod
 		}
 		return []byte(secret), nil
-	})
+	}, m.parserOptions()...)
 
 	if err != nil || !token.Valid {
 		return claims, "", ErrInvalidToken
