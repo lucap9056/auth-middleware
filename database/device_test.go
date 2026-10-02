@@ -54,39 +54,58 @@ func TestSaveDeviceSecret_UnknownUser(t *testing.T) {
 func TestUpdateDeviceSecret_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
-	mock.ExpectExec(`UPDATE auth_user_devices`).
-		WithArgs("new-secret", "dev-1").
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`UPDATE auth_user_devices`).
+		WithArgs("dev-1").
+		WillReturnRows(sqlmock.NewRows([]string{"generation"}).AddRow(2))
 
-	if err := d.UpdateDeviceSecret("dev-1", "new-secret"); err != nil {
+	generation, err := d.UpdateDeviceSecret("dev-1")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if generation != 2 {
+		t.Errorf("generation: got %d, want %d", generation, 2)
+	}
+}
+
+func TestUpdateDeviceSecret_NotFound(t *testing.T) {
+	d, mock := newMockDB(t)
+
+	mock.ExpectQuery(`UPDATE auth_user_devices`).
+		WithArgs("dev-nonexistent").
+		WillReturnRows(sqlmock.NewRows([]string{"generation"}))
+
+	if _, err := d.UpdateDeviceSecret("dev-nonexistent"); err == nil {
+		t.Fatal("expected error for missing device, got nil")
 	}
 }
 
 func TestGetDeviceSecret_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
-	mock.ExpectQuery(`SELECT secret FROM auth_user_devices`).
+	mock.ExpectQuery(`SELECT secret, generation FROM auth_user_devices`).
 		WithArgs("dev-1").
-		WillReturnRows(sqlmock.NewRows([]string{"secret"}).AddRow("secret-abc"))
+		WillReturnRows(sqlmock.NewRows([]string{"secret", "generation"}).AddRow("secret-abc", 3))
 
-	secret, err := d.GetDeviceSecret("dev-1")
+	secret, generation, err := d.GetDeviceSecret("dev-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if secret != "secret-abc" {
 		t.Errorf("secret: got %q, want %q", secret, "secret-abc")
 	}
+	if generation != 3 {
+		t.Errorf("generation: got %d, want %d", generation, 3)
+	}
 }
 
 func TestGetDeviceSecret_NotFound(t *testing.T) {
 	d, mock := newMockDB(t)
 
-	mock.ExpectQuery(`SELECT secret FROM auth_user_devices`).
+	mock.ExpectQuery(`SELECT secret, generation FROM auth_user_devices`).
 		WithArgs("dev-nonexistent").
-		WillReturnRows(sqlmock.NewRows([]string{"secret"}))
+		WillReturnRows(sqlmock.NewRows([]string{"secret", "generation"}))
 
-	if _, err := d.GetDeviceSecret("dev-nonexistent"); err == nil {
+	if _, _, err := d.GetDeviceSecret("dev-nonexistent"); err == nil {
 		t.Fatal("expected error for missing device, got nil")
 	}
 }

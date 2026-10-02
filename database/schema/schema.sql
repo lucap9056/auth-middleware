@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS auth_user_devices (
     device_name TEXT NOT NULL,
     user_email {{.UsersEmailType}} NOT NULL,
     secret TEXT NOT NULL,
+    generation INT NOT NULL DEFAULT 1,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_auth_user_devices FOREIGN KEY (user_email)
         REFERENCES {{.UsersTable}} ({{.UsersEmailColumn}})

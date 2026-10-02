@@ -45,23 +45,29 @@ func (d *Database) SaveDeviceSecret(userEmail, deviceName, secret string) (strin
 	return deviceID, nil
 }
 
-func (d *Database) UpdateDeviceSecret(deviceID, secret string) error {
+func (d *Database) UpdateDeviceSecret(deviceID string) (int, error) {
 	query := `
 	UPDATE auth_user_devices
-	SET secret = $1, updated_at = CURRENT_TIMESTAMP
-	WHERE device_id = $2;
+	SET generation = generation + 1, updated_at = CURRENT_TIMESTAMP
+	WHERE device_id = $1
+	RETURNING generation;
 	`
-	_, err := d.db.Exec(query, secret, deviceID)
-	return err
+	var generation int
+	err := d.db.QueryRow(query, deviceID).Scan(&generation)
+	if err != nil {
+		return 0, err
+	}
+	return generation, nil
 }
 
-func (d *Database) GetDeviceSecret(deviceID string) (string, error) {
+func (d *Database) GetDeviceSecret(deviceID string) (string, int, error) {
 	var secret string
-	err := d.db.QueryRow("SELECT secret FROM auth_user_devices WHERE device_id = $1", deviceID).Scan(&secret)
+	var generation int
+	err := d.db.QueryRow("SELECT secret, generation FROM auth_user_devices WHERE device_id = $1", deviceID).Scan(&secret, &generation)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	return secret, nil
+	return secret, generation, nil
 }
 
 func (d *Database) DeleteDevice(userEmail, deviceID string) error {
