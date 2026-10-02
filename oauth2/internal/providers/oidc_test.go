@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const testIssuer = "https://issuer.example.com"
+
 // makeIDToken creates an unsigned JWT for testing purposes only.
 func makeIDToken(t *testing.T, claims map[string]any) string {
 	t.Helper()
@@ -65,6 +67,7 @@ func TestFetchDiscovery_Success(t *testing.T) {
 
 func TestFetchDiscovery_TrailingSlashNormalized(t *testing.T) {
 	expected := &OIDCDiscovery{
+		Issuer:                "https://example.com",
 		AuthorizationEndpoint: "https://example.com/authorize",
 		TokenEndpoint:         "https://example.com/token",
 	}
@@ -97,6 +100,7 @@ func TestFetchDiscovery_RetriesOnServerError(t *testing.T) {
 			return
 		}
 		json.NewEncoder(w).Encode(OIDCDiscovery{
+			Issuer:                "http://" + r.Host,
 			AuthorizationEndpoint: "http://" + r.Host + "/authorize",
 			TokenEndpoint:         "http://" + r.Host + "/token",
 		})
@@ -153,6 +157,21 @@ func TestFetchDiscovery_MissingRequiredEndpoints(t *testing.T) {
 	_, err := FetchDiscovery(context.Background(), srv.URL)
 	if err == nil {
 		t.Fatal("expected error for missing endpoints, got nil")
+	}
+}
+
+func TestFetchDiscovery_MissingIssuer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(OIDCDiscovery{
+			AuthorizationEndpoint: "https://example.com/authorize",
+			TokenEndpoint:         "https://example.com/token",
+		})
+	}))
+	defer srv.Close()
+
+	_, err := FetchDiscovery(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for missing issuer, got nil")
 	}
 }
 
@@ -244,6 +263,8 @@ func TestParseIDTokenClaims_NoExpiry(t *testing.T) {
 
 func TestOIDCProvider_GetUser_ViaIDToken(t *testing.T) {
 	idToken := makeIDToken(t, map[string]any{
+		"iss":            testIssuer,
+		"aud":            "test-client-id",
 		"sub":            "oidc-user-1",
 		"email":          "oidc@example.com",
 		"email_verified": true,
@@ -252,7 +273,7 @@ func TestOIDCProvider_GetUser_ViaIDToken(t *testing.T) {
 	})
 	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
 
-	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{})
+	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{Issuer: testIssuer})
 	user, err := provider.GetUser(context.Background(), token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -279,7 +300,7 @@ func TestOIDCProvider_GetUser_UserinfoFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	discovery := &OIDCDiscovery{UserinfoEndpoint: srv.URL}
+	discovery := &OIDCDiscovery{Issuer: testIssuer, UserinfoEndpoint: srv.URL}
 	provider := NewOIDCProvider(newTestConfig(srv.URL), discovery)
 
 	user, err := provider.GetUser(testContextWithClient(srv.URL), newTestToken())
@@ -296,6 +317,8 @@ func TestOIDCProvider_GetUser_UserinfoFallback(t *testing.T) {
 
 func TestOIDCProvider_GetUser_IDTokenMissingEmail_FallsBackToUserinfo(t *testing.T) {
 	idToken := makeIDToken(t, map[string]any{
+		"iss": testIssuer,
+		"aud": "test-client-id",
 		"sub": "oidc-user-3",
 		"exp": time.Now().Add(time.Hour).Unix(),
 		// no email
@@ -311,7 +334,7 @@ func TestOIDCProvider_GetUser_IDTokenMissingEmail_FallsBackToUserinfo(t *testing
 	}))
 	defer srv.Close()
 
-	discovery := &OIDCDiscovery{UserinfoEndpoint: srv.URL}
+	discovery := &OIDCDiscovery{Issuer: testIssuer, UserinfoEndpoint: srv.URL}
 	provider := NewOIDCProvider(newTestConfig(srv.URL), discovery)
 
 	user, err := provider.GetUser(testContextWithClient(srv.URL), token)
@@ -325,6 +348,8 @@ func TestOIDCProvider_GetUser_IDTokenMissingEmail_FallsBackToUserinfo(t *testing
 
 func TestOIDCProvider_GetUser_UnverifiedEmailRejected(t *testing.T) {
 	idToken := makeIDToken(t, map[string]any{
+		"iss":            testIssuer,
+		"aud":            "test-client-id",
 		"sub":            "oidc-user-4",
 		"email":          "unverified@example.com",
 		"email_verified": false,
@@ -337,7 +362,7 @@ func TestOIDCProvider_GetUser_UnverifiedEmailRejected(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	discovery := &OIDCDiscovery{UserinfoEndpoint: srv.URL}
+	discovery := &OIDCDiscovery{Issuer: testIssuer, UserinfoEndpoint: srv.URL}
 	provider := NewOIDCProvider(newTestConfig(srv.URL), discovery)
 
 	_, err := provider.GetUser(testContextWithClient(srv.URL), token)
@@ -348,19 +373,76 @@ func TestOIDCProvider_GetUser_UnverifiedEmailRejected(t *testing.T) {
 
 func TestOIDCProvider_GetUser_UnverifiedEmailAllowed(t *testing.T) {
 	idToken := makeIDToken(t, map[string]any{
+		"iss":   testIssuer,
+		"aud":   "test-client-id",
 		"sub":   "oidc-user-5",
 		"email": "unverified@example.com",
 		"exp":   time.Now().Add(time.Hour).Unix(),
 	})
 	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
 
-	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{}, WithAllowUnverifiedEmail(true))
+	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{Issuer: testIssuer}, WithAllowUnverifiedEmail(true))
 	user, err := provider.GetUser(context.Background(), token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if user.Email != "unverified@example.com" {
 		t.Errorf("Email: got %q, want %q", user.Email, "unverified@example.com")
+	}
+}
+
+func TestOIDCProvider_GetUser_AudArrayContainingClientID(t *testing.T) {
+	idToken := makeIDToken(t, map[string]any{
+		"iss":            testIssuer,
+		"aud":            []string{"other-client", "test-client-id"},
+		"sub":            "oidc-user-6",
+		"email":          "oidc@example.com",
+		"email_verified": true,
+		"exp":            time.Now().Add(time.Hour).Unix(),
+	})
+	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
+
+	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{Issuer: testIssuer})
+	user, err := provider.GetUser(context.Background(), token)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user.ID != "oidc-user-6" {
+		t.Errorf("ID: got %q, want %q", user.ID, "oidc-user-6")
+	}
+}
+
+func TestOIDCProvider_GetUser_IssuerMismatchRejected(t *testing.T) {
+	idToken := makeIDToken(t, map[string]any{
+		"iss":            "https://evil.example.com",
+		"aud":            "test-client-id",
+		"sub":            "oidc-user-7",
+		"email":          "oidc@example.com",
+		"email_verified": true,
+		"exp":            time.Now().Add(time.Hour).Unix(),
+	})
+	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
+
+	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{Issuer: testIssuer, UserinfoEndpoint: "http://localhost/userinfo"})
+	if _, err := provider.GetUser(context.Background(), token); err == nil {
+		t.Fatal("expected error for issuer mismatch, got nil")
+	}
+}
+
+func TestOIDCProvider_GetUser_AudienceMismatchRejected(t *testing.T) {
+	idToken := makeIDToken(t, map[string]any{
+		"iss":            testIssuer,
+		"aud":            []string{"other-client"},
+		"sub":            "oidc-user-8",
+		"email":          "oidc@example.com",
+		"email_verified": true,
+		"exp":            time.Now().Add(time.Hour).Unix(),
+	})
+	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
+
+	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{Issuer: testIssuer, UserinfoEndpoint: "http://localhost/userinfo"})
+	if _, err := provider.GetUser(context.Background(), token); err == nil {
+		t.Fatal("expected error for audience mismatch, got nil")
 	}
 }
 

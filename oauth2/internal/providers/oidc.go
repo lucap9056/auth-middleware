@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -85,6 +86,9 @@ func FetchDiscovery(ctx context.Context, issuerURL string) (*OIDCDiscovery, erro
 				if doc.AuthorizationEndpoint == "" || doc.TokenEndpoint == "" {
 					return nil, fmt.Errorf("discovery document missing required endpoints")
 				}
+				if doc.Issuer == "" {
+					return nil, fmt.Errorf("discovery document missing issuer")
+				}
 				return &doc, nil
 			}
 
@@ -144,6 +148,11 @@ func NewOIDCProvider(config *oauth2.Config, discovery *OIDCDiscovery, opts ...Op
 func (p *OIDCProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
 	if idToken, ok := token.Extra("id_token").(string); ok && idToken != "" {
 		claims, err := parseIDTokenClaims(idToken)
+		if err == nil {
+			if err := p.validateIDTokenClaims(claims); err != nil {
+				return nil, err
+			}
+		}
 		if err == nil && claims.Sub != "" && p.options.checkEmail(claims.Email, bool(claims.EmailVerified)) == nil {
 			return &Userinfo{ID: claims.Sub, Email: claims.Email, Name: claims.Name}, nil
 		}
@@ -154,6 +163,16 @@ func (p *OIDCProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Useri
 	}
 
 	return p.fetchUserinfo(ctx, token)
+}
+
+func (p *OIDCProvider) validateIDTokenClaims(claims *idTokenClaims) error {
+	if claims.Iss != p.discovery.Issuer {
+		return fmt.Errorf("id_token issuer mismatch: got %q, want %q", claims.Iss, p.discovery.Issuer)
+	}
+	if !slices.Contains(claims.Aud, p.config.ClientID) {
+		return fmt.Errorf("id_token audience %v does not contain client_id %q", []string(claims.Aud), p.config.ClientID)
+	}
+	return nil
 }
 
 func (p *OIDCProvider) fetchUserinfo(ctx context.Context, token *oauth2.Token) (*Userinfo, error) {
