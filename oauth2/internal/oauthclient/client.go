@@ -2,6 +2,7 @@ package oauthclient
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"slices"
@@ -32,8 +33,10 @@ type OIDCConfig struct {
 }
 
 type Client struct {
-	config   *oauth2.Config
-	provider providers.Provider
+	config        *oauth2.Config
+	provider      providers.Provider
+	issuer        string
+	requireIssuer bool
 }
 
 func New(cfg Config, opts ...providers.Option) *Client {
@@ -86,8 +89,10 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig, opts ...providers.Option) (*Cl
 	warmTokenEndpoint(discovery.TokenEndpoint)
 
 	return &Client{
-		config:   config,
-		provider: providers.NewOIDCProvider(config, discovery, opts...),
+		config:        config,
+		provider:      providers.NewOIDCProvider(config, discovery, opts...),
+		issuer:        discovery.Issuer,
+		requireIssuer: discovery.AuthorizationResponseIssParameterSupported,
 	}, nil
 }
 
@@ -96,6 +101,19 @@ func (c *Client) AuthURL(state string, verifier string) string {
 		oauth2.AccessTypeOffline,
 		oauth2.S256ChallengeOption(verifier),
 	)
+}
+
+func (c *Client) ValidateIssuer(iss string) error {
+	if iss == "" {
+		if c.requireIssuer {
+			return fmt.Errorf("authorization response missing iss parameter")
+		}
+		return nil
+	}
+	if c.issuer != "" && iss != c.issuer {
+		return fmt.Errorf("authorization response iss mismatch: got %q, want %q", iss, c.issuer)
+	}
+	return nil
 }
 
 func (c *Client) Exchange(ctx context.Context, code string, verifier string) (*oauth2.Token, error) {

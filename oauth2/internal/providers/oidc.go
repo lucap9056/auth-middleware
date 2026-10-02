@@ -21,6 +21,8 @@ type OIDCDiscovery struct {
 	TokenEndpoint         string `json:"token_endpoint"`
 	UserinfoEndpoint      string `json:"userinfo_endpoint"`
 	RevocationEndpoint    string `json:"revocation_endpoint"`
+
+	AuthorizationResponseIssParameterSupported bool `json:"authorization_response_iss_parameter_supported"`
 }
 
 // audienceClaim handles both "aud":"string" and "aud":["string"] in ID tokens.
