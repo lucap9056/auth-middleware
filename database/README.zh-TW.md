@@ -33,14 +33,36 @@ if err != nil {
 defer db.Close()
 ```
 
+### 使用既有的 Connection Pool
+
+若應用程式已經有連到同一個 PostgreSQL 的 `*sql.DB`，可改用 `New`：
+
+```go
+sqlDB, err := sql.Open("pgx", dsn)
+if err != nil {
+	return err
+}
+defer sqlDB.Close()
+
+db, err := database.New(sqlDB, database.WithAutoCreateSchema(true))
+if err != nil {
+	return err
+}
+defer db.Close()
+```
+
+- `*sql.DB` 必須使用 pgx stdlib driver
+- `*sql.DB` 由呼叫端擁有：`Close()` 只會停止 cleanup worker
+- Connection pool 相關 option（`WithMaxOpenConns`、`WithMaxIdleConns`、`WithConnMaxLifetime`、`WithConnMaxIdleTime`）將被忽略
+
 ## Options
 
 | Option | 預設值 | 說明 |
 |---|---|---|
-| `WithMaxOpenConns(n)` | `20` | 最大連線數 |
-| `WithMaxIdleConns(n)` | `15` | 最大閒置連線數 |
-| `WithConnMaxLifetime(d)` | `5m` | 單一連線最長存活時間 |
-| `WithConnMaxIdleTime(d)` | `2m` | 單一連線最長閒置時間 |
+| `WithMaxOpenConns(n)` | `20` | 最大連線數（僅 `NewDatabase`） |
+| `WithMaxIdleConns(n)` | `15` | 最大閒置連線數（僅 `NewDatabase`） |
+| `WithConnMaxLifetime(d)` | `5m` | 單一連線最長存活時間（僅 `NewDatabase`） |
+| `WithConnMaxIdleTime(d)` | `2m` | 單一連線最長閒置時間（僅 `NewDatabase`） |
 | `WithCleanupInterval(d)` | `24h` | 清除 7 天內未更新 device 的間隔；設為 `0` 則停用 |
 | `WithAutoCreateSchema(bool)` | `false` | 啟動時自動建立 `auth_user_devices` table 與 index |
 | `WithUserEmailReference(ref)` | `users(email)` | foreign key 參考的 users table 與 email column |
@@ -59,7 +81,7 @@ defer db.Close()
 
 ### Auto Create Schema
 
-啟用後，`NewDatabase` 會建立 schema，需要 DDL 權限。未啟用時，請透過 `schema.Generate` 或下方 SQL 自行建立。
+啟用後，`NewDatabase` 與 `New` 會建立 schema，需要 DDL 權限。未啟用時，請透過 `schema.Generate` 或下方 SQL 自行建立。
 
 ## Schema
 
@@ -90,5 +112,5 @@ CREATE INDEX IF NOT EXISTS idx_auth_user_devices_updated_at ON auth_user_devices
 | `DeleteDevice(userEmail, deviceID)` | 刪除該使用者的單一 device |
 | `DeleteAllDevices(userEmail)` | 刪除該使用者的所有 device |
 | `DeleteAllDevicesReturningIDs(userEmail)` | 刪除該使用者的所有 device 並回傳其 ID |
-| `Close()` | 停止 cleanup worker 並關閉 connection pool |
+| `Close()` | 停止 cleanup worker；僅在 connection pool 由 `NewDatabase` 開啟時才會關閉它 |
 
