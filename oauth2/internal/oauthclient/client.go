@@ -3,10 +3,7 @@ package oauthclient
 import (
 	"context"
 	"fmt"
-	"log"
-	"net/http"
 	"slices"
-	"time"
 
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"golang.org/x/oauth2"
@@ -53,8 +50,6 @@ func New(cfg Config, opts ...providers.Option) *Client {
 
 	provider := providers.New(cfg.Provider, config, cfg.UserinfoURL, cfg.RevokeURL, opts...)
 
-	warmTokenEndpoint(config.Endpoint.TokenURL)
-
 	return &Client{
 		config:   config,
 		provider: provider,
@@ -85,8 +80,6 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig, opts ...providers.Option) (*Cl
 			TokenURL: discovery.TokenEndpoint,
 		},
 	}
-
-	warmTokenEndpoint(discovery.TokenEndpoint)
 
 	return &Client{
 		config:        config,
@@ -126,22 +119,4 @@ func (c *Client) GetUser(ctx context.Context, token *oauth2.Token) (*providers.U
 
 func (c *Client) Revoke(ctx context.Context, token *oauth2.Token) error {
 	return c.provider.Revoke(ctx, token)
-}
-
-func warmTokenEndpoint(tokenURL string) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
-		if err != nil {
-			return
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Printf("[WARN] token endpoint warm-up failed: %v", err)
-			return
-		}
-		resp.Body.Close()
-	}()
 }
