@@ -139,8 +139,8 @@ func TestJWTManager_RotateRefresh_RevokedTokenDoesNotBumpGeneration(t *testing.T
 	mustRotateRefresh(t, manager, oldRefresh)
 
 	_, claims, err := manager.RotateRefresh(oldRefresh)
-	if !errors.Is(err, ErrInvalidToken) {
-		t.Fatalf("expected ErrInvalidToken, got %v", err)
+	if !errors.Is(err, ErrTokenRevoked) {
+		t.Fatalf("expected ErrTokenRevoked, got %v", err)
 	}
 	if claims.DeviceID != testDeviceID {
 		t.Errorf("expected revoked token's device ID %s, got %s", testDeviceID, claims.DeviceID)
@@ -167,20 +167,26 @@ func TestJWTManager_RotatedRefreshTokenIsRevoked(t *testing.T) {
 	oldAccess := mustGenerateAccess(t, manager, oldRefresh)
 	newRefresh := mustRotateRefresh(t, manager, oldRefresh)
 
-	if _, err := manager.VerifyRefresh(oldRefresh); !errors.Is(err, ErrInvalidToken) {
-		t.Errorf("expected rotated refresh token to be rejected, got %v", err)
+	if _, err := manager.VerifyRefresh(oldRefresh); !errors.Is(err, ErrTokenRevoked) {
+		t.Errorf("expected rotated refresh token to be revoked, got %v", err)
 	}
-	if _, err := manager.GenerateAccess(oldRefresh, testUsername); !errors.Is(err, ErrInvalidToken) {
+	if _, err := manager.GenerateAccess(oldRefresh, testUsername); !errors.Is(err, ErrTokenRevoked) {
 		t.Errorf("expected rotated refresh token to be unable to mint access token, got %v", err)
 	}
-	if _, err := manager.VerifyAccess(oldAccess); !errors.Is(err, ErrInvalidToken) {
-		t.Errorf("expected access token of previous generation to be rejected, got %v", err)
+	if _, err := manager.VerifyAccess(oldAccess); !errors.Is(err, ErrTokenRevoked) {
+		t.Errorf("expected access token of previous generation to be revoked, got %v", err)
 	}
 	if _, err := manager.VerifyRefresh(newRefresh); err != nil {
 		t.Errorf("expected new refresh token to be valid, got %v", err)
 	}
 	if _, err := manager.VerifyAccess(mustGenerateAccess(t, manager, newRefresh)); err != nil {
 		t.Errorf("expected new access token to be valid, got %v", err)
+	}
+}
+
+func TestErrTokenRevoked_WrapsErrInvalidToken(t *testing.T) {
+	if !errors.Is(ErrTokenRevoked, ErrInvalidToken) {
+		t.Fatal("expected ErrTokenRevoked to match ErrInvalidToken")
 	}
 }
 
@@ -245,8 +251,12 @@ func TestJWTManager_RejectsInvalidTokens(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.verify(t); !errors.Is(err, ErrInvalidToken) {
+			err := tt.verify(t)
+			if !errors.Is(err, ErrInvalidToken) {
 				t.Fatalf("expected ErrInvalidToken, got %v", err)
+			}
+			if errors.Is(err, ErrTokenRevoked) {
+				t.Fatal("expected non-generation failure not to be ErrTokenRevoked")
 			}
 		})
 	}
