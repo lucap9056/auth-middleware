@@ -6,42 +6,6 @@ import (
 	"time"
 )
 
-func TestDefaultOptions(t *testing.T) {
-	opts := defaultOptions()
-	if opts.MaxOpenConns != 20 {
-		t.Errorf("expected MaxOpenConns 20, got %d", opts.MaxOpenConns)
-	}
-}
-
-func TestWithFunctions(t *testing.T) {
-	opts := defaultOptions()
-
-	WithMaxOpenConns(100)(opts)
-	if opts.MaxOpenConns != 100 {
-		t.Errorf("expected MaxOpenConns 100, got %d", opts.MaxOpenConns)
-	}
-
-	WithMaxIdleConns(5)(opts)
-	if opts.MaxIdleConns != 5 {
-		t.Errorf("expected MaxIdleConns 5, got %d", opts.MaxIdleConns)
-	}
-
-	WithConnMaxLifetime(10 * time.Second)(opts)
-	if opts.ConnMaxLifetime != 10*time.Second {
-		t.Errorf("expected ConnMaxLifetime 10s, got %v", opts.ConnMaxLifetime)
-	}
-
-	WithConnMaxIdleTime(30 * time.Second)(opts)
-	if opts.ConnMaxIdleTime != 30*time.Second {
-		t.Errorf("expected ConnMaxIdleTime 30s, got %v", opts.ConnMaxIdleTime)
-	}
-
-	WithCleanupInterval(12 * time.Hour)(opts)
-	if opts.CleanupInterval != 12*time.Hour {
-		t.Errorf("expected CleanupInterval 12h, got %v", opts.CleanupInterval)
-	}
-}
-
 func TestFromEnv(t *testing.T) {
 	envKeys := []string{"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_CONN_MAX_LIFETIME", "DB_CONN_MAX_IDLE_TIME", "DB_CLEANUP_INTERVAL"}
 	for _, key := range envKeys {

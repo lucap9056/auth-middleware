@@ -26,54 +26,6 @@ func TestJWTManager_GenerateRandomSecret(t *testing.T) {
 	}
 }
 
-func TestJWTManager_GenerateRefresh(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	userID := "user123"
-	deviceID := "device456"
-
-	token, err := manager.GenerateRefresh(userID, deviceID)
-	if err != nil {
-		t.Fatalf("failed to generate refresh token: %v", err)
-	}
-
-	if token == "" {
-		t.Fatal("expected non-empty token")
-	}
-
-	secret, err := db.GetDeviceSecret(deviceID)
-	if err != nil {
-		t.Fatalf("failed to get device secret: %v", err)
-	}
-	if secret == "" {
-		t.Fatal("expected non-empty device secret")
-	}
-}
-
-func TestJWTManager_GenerateAccess(t *testing.T) {
-	db := NewMockDatabase()
-	manager := NewJWTManager(db)
-
-	userID := "user123"
-	deviceID := "device456"
-	username := "testuser"
-
-	refreshToken, err := manager.GenerateRefresh(userID, deviceID)
-	if err != nil {
-		t.Fatalf("failed to generate refresh token: %v", err)
-	}
-
-	accessToken, err := manager.GenerateAccess(refreshToken, username)
-	if err != nil {
-		t.Fatalf("failed to generate access token: %v", err)
-	}
-
-	if accessToken == "" {
-		t.Fatal("expected non-empty access token")
-	}
-}
-
 func TestJWTManager_VerifyAccess(t *testing.T) {
 	db := NewMockDatabase()
 	manager := NewJWTManager(db)

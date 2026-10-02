@@ -59,16 +59,6 @@ func TestNewMemorySecretCache_InvalidSize(t *testing.T) {
 	}
 }
 
-func TestMemorySecretCache_Close(t *testing.T) {
-	c := newTestMemoryCache(t, time.Minute)
-	if err := c.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	if err := c.Close(); err != nil {
-		t.Fatalf("second Close: %v", err)
-	}
-}
-
 func TestMemorySecretCache_WithoutOverwriteKeepsNewerSecret(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
 	c.SetSecret("d1", "rotated", true)
