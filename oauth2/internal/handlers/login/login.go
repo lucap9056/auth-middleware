@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -98,6 +99,20 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if providerError := r.FormValue("error"); providerError != "" {
+		deleteCtx, deleteCancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer deleteCancel()
+		deleteErr := h.stateCache.Delete(deleteCtx, state)
+		response.JSON(w, false, "Authorization failed at provider", providerErrorStatus(providerError),
+			errors.Join(fmt.Errorf("provider returned error: %q", providerError), deleteErr))
+		return
+	}
+
+	if code == "" {
+		response.JSON(w, false, "Missing code parameter", http.StatusBadRequest, nil)
+		return
+	}
+
 	deviceName := r.Header.Get("X-Device-Name")
 	if deviceName == "" {
 		deviceName = DefaultDeviceName
@@ -138,6 +153,19 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, false, "", http.StatusInternalServerError, nil)
+}
+
+func providerErrorStatus(providerError string) int {
+	switch providerError {
+	case "access_denied":
+		return http.StatusForbidden
+	case "server_error":
+		return http.StatusBadGateway
+	case "temporarily_unavailable":
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusBadRequest
+	}
 }
 
 func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*ExchangeResponse, error) {
