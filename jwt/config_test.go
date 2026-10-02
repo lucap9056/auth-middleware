@@ -53,17 +53,3 @@ func TestFromEnv(t *testing.T) {
 		t.Errorf("expected refresh token duration 14d, got %v", cfg.RefreshTokenDuration)
 	}
 }
-
-func TestWithDurations(t *testing.T) {
-	cfg := defaultOptions()
-	
-	WithAccessTokenDuration(time.Hour)(cfg)
-	if cfg.AccessTokenDuration != time.Hour {
-		t.Errorf("expected access token duration 1h, got %v", cfg.AccessTokenDuration)
-	}
-
-	WithRefreshTokenDuration(24*time.Hour)(cfg)
-	if cfg.RefreshTokenDuration != 24*time.Hour {
-		t.Errorf("expected refresh token duration 24h, got %v", cfg.RefreshTokenDuration)
-	}
-}

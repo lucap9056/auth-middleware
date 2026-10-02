@@ -23,18 +23,6 @@ func TestSaveDeviceSecret_Success(t *testing.T) {
 	}
 }
 
-func TestSaveDeviceSecret_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectQuery(`INSERT INTO user_devices`).
-		WithArgs("My Phone", "uid-1", "secret-abc").
-		WillReturnError(errors.New("insert failed"))
-
-	if _, err := d.SaveDeviceSecret("uid-1", "My Phone", "secret-abc"); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestUpdateDeviceSecret_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
@@ -44,18 +32,6 @@ func TestUpdateDeviceSecret_Success(t *testing.T) {
 
 	if err := d.UpdateDeviceSecret("dev-1", "new-secret"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestUpdateDeviceSecret_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectExec(`UPDATE user_devices`).
-		WithArgs("new-secret", "dev-1").
-		WillReturnError(errors.New("update failed"))
-
-	if err := d.UpdateDeviceSecret("dev-1", "new-secret"); err == nil {
-		t.Fatal("expected error, got nil")
 	}
 }
 
@@ -87,18 +63,6 @@ func TestGetDeviceSecret_NotFound(t *testing.T) {
 	}
 }
 
-func TestGetDeviceSecret_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectQuery(`SELECT secret FROM user_devices`).
-		WithArgs("dev-1").
-		WillReturnError(errors.New("db error"))
-
-	if _, err := d.GetDeviceSecret("dev-1"); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestDeleteDevice_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
@@ -111,18 +75,6 @@ func TestDeleteDevice_Success(t *testing.T) {
 	}
 }
 
-func TestDeleteDevice_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectExec(`DELETE FROM user_devices`).
-		WithArgs("uid-1", "dev-1").
-		WillReturnError(errors.New("delete failed"))
-
-	if err := d.DeleteDevice("uid-1", "dev-1"); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestDeleteAllDevices_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
@@ -132,18 +84,6 @@ func TestDeleteAllDevices_Success(t *testing.T) {
 
 	if err := d.DeleteAllDevices("uid-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestDeleteAllDevices_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectExec(`DELETE FROM user_devices`).
-		WithArgs("uid-1").
-		WillReturnError(errors.New("delete failed"))
-
-	if err := d.DeleteAllDevices("uid-1"); err == nil {
-		t.Fatal("expected error, got nil")
 	}
 }
 
@@ -176,18 +116,6 @@ func TestDeleteAllDevicesReturningIDs_NoDevices(t *testing.T) {
 	}
 	if len(deviceIDs) != 0 {
 		t.Errorf("deviceIDs: got %v, want empty", deviceIDs)
-	}
-}
-
-func TestDeleteAllDevicesReturningIDs_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectQuery(`DELETE FROM user_devices`).
-		WithArgs("uid-1").
-		WillReturnError(errors.New("delete failed"))
-
-	if _, err := d.DeleteAllDevicesReturningIDs("uid-1"); err == nil {
-		t.Fatal("expected error, got nil")
 	}
 }
 

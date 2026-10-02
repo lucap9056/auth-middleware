@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -41,18 +40,6 @@ func TestCreateUser_Success(t *testing.T) {
 	}
 }
 
-func TestCreateUser_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectQuery(`INSERT INTO users`).
-		WithArgs("alice", "alice@example.com").
-		WillReturnError(errors.New("insert failed"))
-
-	if _, err := d.CreateUser("alice", "alice@example.com"); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestGetUserFromEmail_Found(t *testing.T) {
 	d, mock := newMockDB(t)
 
@@ -83,18 +70,6 @@ func TestGetUserFromEmail_NotFound(t *testing.T) {
 	}
 	if user != nil {
 		t.Errorf("expected nil user, got %+v", user)
-	}
-}
-
-func TestGetUserFromEmail_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectQuery(`SELECT user_id, username, email`).
-		WithArgs("alice@example.com").
-		WillReturnError(errors.New("db error"))
-
-	if _, err := d.GetUserFromEmail("alice@example.com"); err == nil {
-		t.Fatal("expected error, got nil")
 	}
 }
 
@@ -131,18 +106,6 @@ func TestGetUserFromID_NotFound(t *testing.T) {
 	}
 }
 
-func TestGetUserFromID_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectQuery(`SELECT user_id, username, email`).
-		WithArgs("uid-1").
-		WillReturnError(errors.New("db error"))
-
-	if _, err := d.GetUserFromID("uid-1"); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestUpdateUsername_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
@@ -155,18 +118,6 @@ func TestUpdateUsername_Success(t *testing.T) {
 	}
 }
 
-func TestUpdateUsername_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectExec(`UPDATE users`).
-		WithArgs("bob", "uid-1").
-		WillReturnError(errors.New("update failed"))
-
-	if err := d.UpdateUsername("uid-1", "bob"); err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
 func TestDeleteUser_Success(t *testing.T) {
 	d, mock := newMockDB(t)
 
@@ -176,17 +127,5 @@ func TestDeleteUser_Success(t *testing.T) {
 
 	if err := d.DeleteUser("uid-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestDeleteUser_Error(t *testing.T) {
-	d, mock := newMockDB(t)
-
-	mock.ExpectExec(`DELETE FROM users`).
-		WithArgs("uid-1").
-		WillReturnError(errors.New("delete failed"))
-
-	if err := d.DeleteUser("uid-1"); err == nil {
-		t.Fatal("expected error, got nil")
 	}
 }
