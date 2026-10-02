@@ -1,22 +1,45 @@
 package database
 
+import (
+	"errors"
+
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+const (
+	pgForeignKeyViolation   = "23503"
+	userDevicesFKConstraint = "fk_auth_user_devices"
+)
+
+var ErrUserNotFound = errors.New("user not found")
+
 type UserDevice struct {
-	UserID     string `json:"user_id"`
+	UserEmail  string `json:"user_email"`
 	DeviceID   string `json:"device_id"`
 	DeviceName string `json:"device_name"`
 	Secret     string `json:"secret,omitempty"`
 	UpdatedAt  string `json:"updated_at,omitempty"`
 }
 
-func (d *Database) SaveDeviceSecret(userID, deviceName, secret string) (string, error) {
+func (d *Database) SaveDeviceSecret(userEmail, deviceName, secret string) (string, error) {
 	query := `
-	INSERT INTO user_devices (device_name, user_id, secret, updated_at)
+	INSERT INTO auth_user_devices (device_name, user_email, secret, updated_at)
 	VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
 	RETURNING device_id;
 	`
 	var deviceID string
-	err := d.db.QueryRow(query, deviceName, userID, secret).Scan(&deviceID)
+	err := d.db.QueryRow(query, deviceName, userEmail, secret).Scan(&deviceID)
 	if err != nil {
+
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) &&
+			pgErr.Code == pgForeignKeyViolation &&
+			pgErr.ConstraintName == userDevicesFKConstraint {
+
+			return "", ErrUserNotFound
+		}
+
 		return "", err
 	}
 	return deviceID, nil
@@ -24,7 +47,7 @@ func (d *Database) SaveDeviceSecret(userID, deviceName, secret string) (string, 
 
 func (d *Database) UpdateDeviceSecret(deviceID, secret string) error {
 	query := `
-	UPDATE user_devices 
+	UPDATE auth_user_devices
 	SET secret = $1, updated_at = CURRENT_TIMESTAMP
 	WHERE device_id = $2;
 	`
@@ -34,28 +57,28 @@ func (d *Database) UpdateDeviceSecret(deviceID, secret string) error {
 
 func (d *Database) GetDeviceSecret(deviceID string) (string, error) {
 	var secret string
-	err := d.db.QueryRow("SELECT secret FROM user_devices WHERE device_id = $1", deviceID).Scan(&secret)
+	err := d.db.QueryRow("SELECT secret FROM auth_user_devices WHERE device_id = $1", deviceID).Scan(&secret)
 	if err != nil {
 		return "", err
 	}
 	return secret, nil
 }
 
-func (d *Database) DeleteDevice(userID, deviceID string) error {
-	query := `DELETE FROM user_devices WHERE user_id = $1 AND device_id = $2`
-	_, err := d.db.Exec(query, userID, deviceID)
+func (d *Database) DeleteDevice(userEmail, deviceID string) error {
+	query := `DELETE FROM auth_user_devices WHERE user_email = $1 AND device_id = $2`
+	_, err := d.db.Exec(query, userEmail, deviceID)
 	return err
 }
 
-func (d *Database) DeleteAllDevices(userID string) error {
-	query := `DELETE FROM user_devices WHERE user_id = $1`
-	_, err := d.db.Exec(query, userID)
+func (d *Database) DeleteAllDevices(userEmail string) error {
+	query := `DELETE FROM auth_user_devices WHERE user_email = $1`
+	_, err := d.db.Exec(query, userEmail)
 	return err
 }
 
-func (d *Database) DeleteAllDevicesReturningIDs(userID string) ([]string, error) {
-	query := `DELETE FROM user_devices WHERE user_id = $1 RETURNING device_id`
-	rows, err := d.db.Query(query, userID)
+func (d *Database) DeleteAllDevicesReturningIDs(userEmail string) ([]string, error) {
+	query := `DELETE FROM auth_user_devices WHERE user_email = $1 RETURNING device_id`
+	rows, err := d.db.Query(query, userEmail)
 	if err != nil {
 		return nil, err
 	}

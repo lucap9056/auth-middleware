@@ -55,7 +55,7 @@ func NewDatabase(dsn string, opts ...DatabaseOption) (*Database, error) {
 
 func (d *Database) cleanupOldDevices() (int64, error) {
 	query := `
-    DELETE FROM user_devices 
+    DELETE FROM auth_user_devices 
     WHERE updated_at < NOW() - INTERVAL '7 days';
     `
 	result, err := d.db.Exec(query)
