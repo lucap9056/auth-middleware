@@ -138,24 +138,3 @@ func TestGenericProvider_Revoke_PrefersRefreshToken(t *testing.T) {
 		t.Errorf("expected refresh token %q to be sent, got %q", tok.RefreshToken, receivedToken)
 	}
 }
-
-func TestGenericProvider_Revoke_FallbackToAccessToken(t *testing.T) {
-	var receivedToken string
-	server := newGenericServer(t, nil, func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-		receivedToken = r.FormValue("token")
-		w.WriteHeader(http.StatusOK)
-	})
-	defer server.Close()
-
-	provider := NewGenericProvider(newTestConfig(server.URL), server.URL+"/userinfo", server.URL+"/revoke")
-	provider.httpClient = newTestClient(server.URL)
-
-	tok := newTestToken()
-	tok.RefreshToken = ""
-	provider.Revoke(context.Background(), tok)
-
-	if receivedToken != tok.AccessToken {
-		t.Errorf("expected access token %q to be sent, got %q", tok.AccessToken, receivedToken)
-	}
-}

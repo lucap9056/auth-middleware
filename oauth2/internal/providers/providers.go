@@ -48,6 +48,13 @@ func (o Options) checkEmail(email string, verified bool) error {
 	return nil
 }
 
+func revocableToken(token *oauth2.Token) string {
+	if token.RefreshToken != "" {
+		return token.RefreshToken
+	}
+	return token.AccessToken
+}
+
 type Provider interface {
 	GetUser(ctx context.Context, token *oauth2.Token) (*Userinfo, error)
 	Revoke(ctx context.Context, token *oauth2.Token) error
