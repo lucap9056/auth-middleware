@@ -1,18 +1,21 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"testing"
 
 	"github.com/lucap9056/auth-middleware/database"
 	"github.com/lucap9056/auth-middleware/jwt"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 )
@@ -31,8 +34,21 @@ func newOAuthStub(userID, email, name string) *oauthStub {
 	mux.HandleFunc("POST /token", s.handleToken)
 	mux.HandleFunc("GET /userinfo", s.handleUserInfo)
 	mux.HandleFunc("POST /revoke", s.handleRevoke)
+	mux.HandleFunc("GET /.well-known/openid-configuration", s.handleDiscovery)
 	s.Server = httptest.NewServer(mux)
 	return s
+}
+
+func (s *oauthStub) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"issuer":                 s.URL,
+		"authorization_endpoint": s.URL + "/authorize",
+		"token_endpoint":         s.URL + "/token",
+		"userinfo_endpoint":      s.URL + "/userinfo",
+		"revocation_endpoint":    s.URL + "/revoke",
+		"authorization_response_iss_parameter_supported": true,
+	})
 }
 
 func (s *oauthStub) handleToken(w http.ResponseWriter, _ *http.Request) {
@@ -180,13 +196,6 @@ type testEnv struct {
 // newTestEnv builds a handler stack backed by the given stub and mock DB.
 // Pass db=nil to simulate a no-database deployment.
 func newTestEnv(stub *oauthStub, db *mockDB, opts ...options.Option) *testEnv {
-	var jwtDB jwt.Database
-	var handlerDB options.DB
-	if db != nil {
-		jwtDB = db
-		handlerDB = db
-	}
-
 	oauth2Client := oauthclient.New(oauthclient.Config{
 		Provider:     "generic",
 		ClientID:     "test-client",
@@ -198,6 +207,31 @@ func newTestEnv(stub *oauthStub, db *mockDB, opts ...options.Option) *testEnv {
 		RevokeURL:    stub.URL + "/revoke",
 		Scopes:       []string{"email"},
 	})
+	return newTestEnvWithClient(stub, db, oauth2Client, opts...)
+}
+
+func newOIDCTestEnv(t *testing.T, stub *oauthStub, db *mockDB, opts ...options.Option) *testEnv {
+	t.Helper()
+	oauth2Client, err := oauthclient.NewOIDC(context.Background(), oauthclient.OIDCConfig{
+		IssuerURL:    stub.URL,
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+		RedirectURL:  "http://localhost/callback",
+		Scopes:       []string{"email"},
+	})
+	if err != nil {
+		t.Fatalf("NewOIDC: %v", err)
+	}
+	return newTestEnvWithClient(stub, db, oauth2Client, opts...)
+}
+
+func newTestEnvWithClient(stub *oauthStub, db *mockDB, oauth2Client login.OAuth2Client, opts ...options.Option) *testEnv {
+	var jwtDB jwt.Database
+	var handlerDB options.DB
+	if db != nil {
+		jwtDB = db
+		handlerDB = db
+	}
 
 	jwtManager := jwt.NewJWTManager(jwtDB)
 	flightGroup, err := flight.New()

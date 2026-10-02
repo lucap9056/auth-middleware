@@ -36,6 +36,7 @@ func TestLogin(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", w.Code)
 	}
+	assertNoStore(t, w)
 
 	var resp struct {
 		Success bool `json:"success"`
@@ -113,6 +114,7 @@ func TestCallback_ExistingUser(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	assertNoStore(t, w)
 
 	var resp struct {
 		Success bool `json:"success"`
@@ -256,6 +258,7 @@ func TestCallback_NoDB_OAuthTokens(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	assertNoStore(t, w)
 
 	var resp struct {
 		Success bool `json:"success"`
@@ -291,6 +294,7 @@ func TestCallback_NoDB_PassOAuthToken(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	assertNoStore(t, w)
 	if got := w.Header().Get("X-Forwarded-Access-Token"); got != "stub-access-token" {
 		t.Errorf("X-Forwarded-Access-Token: want %q, got %q", "stub-access-token", got)
 	}
@@ -323,6 +327,7 @@ func TestRefresh_WithBody(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	assertNoStore(t, w)
 
 	var resp struct {
 		Success bool `json:"success"`
@@ -478,6 +483,7 @@ func TestRefreshAccess(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
+	assertNoStore(t, w)
 	var resp struct {
 		Success bool   `json:"success"`
 		Message string `json:"message"`
