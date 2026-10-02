@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"testing"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -50,5 +51,23 @@ func newTestConfig(serverURL string) *oauth2.Config {
 			AuthURL:  serverURL + "/auth",
 			TokenURL: serverURL + "/token",
 		},
+	}
+}
+
+func TestRevocableToken(t *testing.T) {
+	tests := []struct {
+		name  string
+		token *oauth2.Token
+		want  string
+	}{
+		{"prefers refresh token", &oauth2.Token{AccessToken: "access", RefreshToken: "refresh"}, "refresh"},
+		{"falls back to access token", &oauth2.Token{AccessToken: "access"}, "access"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := revocableToken(tt.token); got != tt.want {
+				t.Errorf("revocableToken() = %q; want %q", got, tt.want)
+			}
+		})
 	}
 }

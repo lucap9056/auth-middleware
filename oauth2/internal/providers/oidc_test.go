@@ -479,29 +479,6 @@ func TestOIDCProvider_Revoke_Success(t *testing.T) {
 	}
 }
 
-func TestOIDCProvider_Revoke_FallbackToAccessToken(t *testing.T) {
-	var receivedToken string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-		receivedToken = r.FormValue("token")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	discovery := &OIDCDiscovery{RevocationEndpoint: srv.URL}
-	provider := NewOIDCProvider(newTestConfig(srv.URL), discovery)
-	provider.httpClient = newTestClient(srv.URL)
-
-	tok := newTestToken()
-	tok.RefreshToken = ""
-	if err := provider.Revoke(context.Background(), tok); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if receivedToken != tok.AccessToken {
-		t.Errorf("expected access token %q to be sent, got %q", tok.AccessToken, receivedToken)
-	}
-}
-
 func TestOIDCProvider_Revoke_NoEndpoint(t *testing.T) {
 	provider := NewOIDCProvider(newTestConfig("http://localhost"), &OIDCDiscovery{})
 	if err := provider.Revoke(context.Background(), newTestToken()); err == nil {

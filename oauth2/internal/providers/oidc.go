@@ -209,13 +209,8 @@ func (p *OIDCProvider) Revoke(ctx context.Context, token *oauth2.Token) error {
 		return fmt.Errorf("revocation endpoint not available for this provider")
 	}
 
-	tokenToRevoke := token.AccessToken
-	if token.RefreshToken != "" {
-		tokenToRevoke = token.RefreshToken
-	}
-
 	data := url.Values{}
-	data.Set("token", tokenToRevoke)
+	data.Set("token", revocableToken(token))
 	data.Set("client_id", p.config.ClientID)
 	data.Set("client_secret", p.config.ClientSecret)
 
