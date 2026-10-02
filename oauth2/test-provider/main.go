@@ -87,15 +87,16 @@ func newListener(addr string) (net.Listener, error) {
 
 func handleDiscovery(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{
-		"issuer":                                issuer,
-		"authorization_endpoint":                issuer + "/auth",
-		"token_endpoint":                        issuer + "/token",
-		"userinfo_endpoint":                     issuer + "/userinfo",
-		"response_types_supported":              []string{"code"},
-		"subject_types_supported":               []string{"public"},
-		"id_token_signing_alg_values_supported": []string{"none"},
-		"scopes_supported":                      []string{"openid", "profile", "email"},
-		"code_challenge_methods_supported":      []string{"S256"},
+		"issuer":                                         issuer,
+		"authorization_endpoint":                         issuer + "/auth",
+		"token_endpoint":                                 issuer + "/token",
+		"userinfo_endpoint":                              issuer + "/userinfo",
+		"response_types_supported":                       []string{"code"},
+		"subject_types_supported":                        []string{"public"},
+		"id_token_signing_alg_values_supported":          []string{"none"},
+		"scopes_supported":                               []string{"openid", "profile", "email"},
+		"code_challenge_methods_supported":               []string{"S256"},
+		"authorization_response_iss_parameter_supported": true,
 	})
 }
 
@@ -122,6 +123,7 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	params := u.Query()
 	params.Set("code", code)
+	params.Set("iss", issuer)
 	if state != "" {
 		params.Set("state", state)
 	}

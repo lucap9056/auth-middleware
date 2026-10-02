@@ -26,6 +26,7 @@ const (
 
 type OAuth2Client interface {
 	AuthURL(state, verifier string) string
+	ValidateIssuer(iss string) error
 	Exchange(ctx context.Context, code, verifier string) (*oauth2.Token, error)
 	GetUser(ctx context.Context, token *oauth2.Token) (*providers.Userinfo, error)
 	Revoke(ctx context.Context, token *oauth2.Token) error
@@ -96,6 +97,11 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	state := r.FormValue("state")
 	if state == "" {
 		response.JSON(w, false, "Missing state parameter", http.StatusBadRequest, nil)
+		return
+	}
+
+	if err := h.oauth2Client.ValidateIssuer(r.FormValue("iss")); err != nil {
+		response.JSON(w, false, "Invalid issuer", http.StatusBadRequest, err)
 		return
 	}
 
