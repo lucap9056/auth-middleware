@@ -9,7 +9,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/lucap9056/auth-middleware/database/v2 v2.1.0
-	github.com/lucap9056/auth-middleware/jwt/v2 v2.0.0
+	github.com/lucap9056/auth-middleware/jwt/v2 v2.1.0
 	github.com/lucap9056/go-lifecycle/v2 v2.0.0
 	github.com/maypok86/otter/v2 v2.3.0
 	github.com/ravener/discord-oauth2 v0.0.0-20230514095040-ae65713199b3
