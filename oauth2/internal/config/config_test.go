@@ -13,7 +13,7 @@ var allEnvKeys = []string{
 	EnvHTTPAddress, EnvHTTPMode, EnvDatabaseURL, EnvRedisURL,
 	EnvDBMaxOpenConns, EnvDBMaxIdleConns, EnvDBConnMaxLifetime, EnvDBConnMaxIdleTime, EnvDBCleanupInterval,
 	EnvDBAutoCreateSchema, EnvDBUserEmailReference, EnvDBUserUsernameColumn,
-	EnvJWTAccessDuration, EnvJWTRefreshDuration, EnvJWTIssuer, EnvJWTAudience,
+	EnvJWTAccessDuration, EnvJWTRefreshDuration, EnvJWTIssuer, EnvJWTAudience, EnvIdentityJWTSecret,
 	EnvOAuth2Provider, EnvOAuth2ClientID, EnvOAuth2ClientSecret, EnvOAuth2RedirectURL,
 	EnvOAuth2AuthURL, EnvOAuth2TokenURL, EnvOAuth2UserinfoURL, EnvOAuth2RevokeURL,
 	EnvOAuth2Scopes, EnvOAuth2ClientPKCE, EnvOIDCIssuerURL,
@@ -112,6 +112,7 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		EnvJWTRefreshDuration:   "1d12h",
 		EnvJWTIssuer:            "https://auth.example.com",
 		EnvJWTAudience:          "api",
+		EnvIdentityJWTSecret:    "0123456789abcdef0123456789abcdef",
 	})
 
 	cfg, err := Load()
@@ -137,6 +138,7 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		RefreshTokenDuration: 36 * time.Hour,
 		Issuer:               "https://auth.example.com",
 		Audience:             "api",
+		IdentitySecret:       "0123456789abcdef0123456789abcdef",
 	}
 	if *cfg.JWT != expectedJWT {
 		t.Errorf("JWT: got %+v, want %+v", cfg.JWT, expectedJWT)
@@ -279,6 +281,11 @@ func TestLoad_Validation(t *testing.T) {
 			name:        "zero jwt duration",
 			env:         map[string]string{EnvJWTRefreshDuration: "0d"},
 			expectedErr: ErrNonPositiveDuration,
+		},
+		{
+			name:        "short identity secret",
+			env:         map[string]string{EnvIdentityJWTSecret: "too-short"},
+			expectedErr: ErrIdentitySecretTooShort,
 		},
 		{
 			name:        "builtin without urls",
