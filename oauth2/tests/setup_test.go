@@ -10,14 +10,15 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lucap9056/auth-middleware/database"
-	"github.com/lucap9056/auth-middleware/jwt"
+	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/usersdb"
 )
 
 // oauthStub is a minimal in-process OAuth2 provider for testing.
@@ -77,110 +78,130 @@ func (s *oauthStub) handleRevoke(w http.ResponseWriter, _ *http.Request) {
 
 // mockDB implements options.DB and jwt.Database using in-memory maps.
 type mockDB struct {
-	mu           sync.Mutex
-	users        map[string]*database.User // email -> user
-	usersID      map[string]*database.User // userID -> user
-	deviceOwner  map[string]string         // deviceID -> userID
-	deviceSecret map[string]string         // deviceID -> secret
-	idCounter    int
+	mu          sync.Mutex
+	users       map[string]bool // email -> exists
+	usernames   map[string]string
+	devices     map[string]*mockDevice
+	idCounter   int
+	usernameErr error
+}
+
+type mockDevice struct {
+	owner      string
+	secret     string
+	generation int
 }
 
 func newMockDB() *mockDB {
 	return &mockDB{
-		users:        make(map[string]*database.User),
-		usersID:      make(map[string]*database.User),
-		deviceOwner:  make(map[string]string),
-		deviceSecret: make(map[string]string),
+		users:     make(map[string]bool),
+		usernames: make(map[string]string),
+		devices:   make(map[string]*mockDevice),
 	}
 }
 
-func (m *mockDB) seedUser(u *database.User) {
-	m.users[u.Email] = u
-	m.usersID[u.UserID] = u
+func (m *mockDB) seedUser(email string) {
+	m.users[email] = true
 }
 
-func (m *mockDB) GetUserFromEmail(email string) (*database.User, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.users[email], nil
+func (m *mockDB) seedUsername(email, username string) {
+	m.users[email] = true
+	m.usernames[email] = username
 }
 
-func (m *mockDB) GetUserFromID(id string) (*database.User, error) {
+func (m *mockDB) GetUsername(email string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.usersID[id], nil
-}
-
-func (m *mockDB) CreateUser(username, email string) (*database.User, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.idCounter++
-	u := &database.User{
-		UserID:   fmt.Sprintf("user-%d", m.idCounter),
-		Username: username,
-		Email:    email,
+	if m.usernameErr != nil {
+		return "", m.usernameErr
 	}
-	m.users[email] = u
-	m.usersID[u.UserID] = u
-	return u, nil
-}
-
-func (m *mockDB) SaveDeviceSecret(userID, _, secret string) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.idCounter++
-	deviceID := fmt.Sprintf("device-%d", m.idCounter)
-	m.deviceOwner[deviceID] = userID
-	m.deviceSecret[deviceID] = secret
-	return deviceID, nil
-}
-
-func (m *mockDB) UpdateDeviceSecret(deviceID, secret string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.deviceSecret[deviceID]; !ok {
-		return errors.New("device not found")
+	if !m.users[email] {
+		return "", database.ErrUserNotFound
 	}
-	m.deviceSecret[deviceID] = secret
-	return nil
+	return m.usernames[email], nil
 }
 
-func (m *mockDB) GetDeviceSecret(deviceID string) (string, error) {
+func (m *mockDB) deviceCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, ok := m.deviceSecret[deviceID]
-	if !ok {
-		return "", fmt.Errorf("device %s not found", deviceID)
-	}
-	return s, nil
+	return len(m.devices)
 }
 
-func (m *mockDB) DeleteDevice(_, deviceID string) error {
+func (m *mockDB) hasUser(email string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.deviceOwner, deviceID)
-	delete(m.deviceSecret, deviceID)
-	return nil
+	return m.users[email]
 }
 
-func (m *mockDB) DeleteAllDevices(userID string) error {
+func (m *mockDB) CreateUser(username, email string) (*usersdb.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, owner := range m.deviceOwner {
-		if owner == userID {
-			delete(m.deviceOwner, id)
-			delete(m.deviceSecret, id)
+	m.users[email] = true
+	m.usernames[email] = username
+	return &usersdb.User{Username: username, Email: email}, nil
+}
+
+func (m *mockDB) DeleteUser(email string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.users, email)
+	for id, d := range m.devices {
+		if d.owner == email {
+			delete(m.devices, id)
 		}
 	}
 	return nil
 }
 
-func (m *mockDB) DeleteUser(userID string) error {
+func (m *mockDB) SaveDeviceSecret(email, _, secret string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if u, ok := m.usersID[userID]; ok {
-		delete(m.users, u.Email)
-		delete(m.usersID, userID)
+	if !m.users[email] {
+		return "", database.ErrUserNotFound
+	}
+	m.idCounter++
+	deviceID := fmt.Sprintf("device-%d", m.idCounter)
+	m.devices[deviceID] = &mockDevice{owner: email, secret: secret, generation: 1}
+	return deviceID, nil
+}
+
+func (m *mockDB) UpdateDeviceSecret(deviceID string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d, ok := m.devices[deviceID]
+	if !ok {
+		return 0, errors.New("device not found")
+	}
+	d.generation++
+	return d.generation, nil
+}
+
+func (m *mockDB) GetDeviceSecret(deviceID string) (string, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d, ok := m.devices[deviceID]
+	if !ok {
+		return "", 0, fmt.Errorf("device %s not found", deviceID)
+	}
+	return d.secret, d.generation, nil
+}
+
+func (m *mockDB) DeleteDevice(email, deviceID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if d, ok := m.devices[deviceID]; ok && d.owner == email {
+		delete(m.devices, deviceID)
+	}
+	return nil
+}
+
+func (m *mockDB) DeleteAllDevices(email string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, d := range m.devices {
+		if d.owner == email {
+			delete(m.devices, id)
+		}
 	}
 	return nil
 }
@@ -228,9 +249,11 @@ func newOIDCTestEnv(t *testing.T, stub *oauthStub, db *mockDB, opts ...options.O
 func newTestEnvWithClient(stub *oauthStub, db *mockDB, oauth2Client login.OAuth2Client, opts ...options.Option) *testEnv {
 	var jwtDB jwt.Database
 	var handlerDB options.DB
+	var usersDB options.UsersDB
 	if db != nil {
 		jwtDB = db
 		handlerDB = db
+		usersDB = db
 	}
 
 	jwtManager := jwt.NewJWTManager(jwtDB)
@@ -245,6 +268,7 @@ func newTestEnvWithClient(stub *oauthStub, db *mockDB, oauth2Client login.OAuth2
 	mux := http.NewServeMux()
 	handlers.RegisterRoutes(mux, handlers.Dependencies{
 		DB:           handlerDB,
+		UsersDB:      usersDB,
 		JWTManager:   jwtManager,
 		Flight:       flightGroup,
 		StateCache:   stateCache,
@@ -262,10 +286,11 @@ func (e *testEnv) do(r *http.Request) *httptest.ResponseRecorder {
 }
 
 // issueTokens seeds a device in the mock DB and returns a valid (refresh, access) pair.
-func (e *testEnv) issueTokens(userID, username, deviceName string) (refresh, access string) {
-	secret := e.jwtManager.GenerateRandomSecret()
-	deviceID, _ := e.db.SaveDeviceSecret(userID, deviceName, secret)
-	refresh, _ = e.jwtManager.GenerateRefresh(userID, deviceID, secret)
-	access, _ = e.jwtManager.GenerateAccess(refresh, username)
+func (e *testEnv) issueTokens(email, deviceName string) (refresh, access string) {
+	const secret = "test-device-secret"
+	deviceID, _ := e.db.SaveDeviceSecret(email, deviceName, secret)
+	_, generation, _ := e.db.GetDeviceSecret(deviceID)
+	refresh, _ = e.jwtManager.GenerateRefresh(email, deviceID, secret, generation)
+	access, _ = e.jwtManager.GenerateAccess(refresh, "")
 	return
 }

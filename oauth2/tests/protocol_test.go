@@ -6,8 +6,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/lucap9056/auth-middleware/database"
 )
 
 func assertNoStore(t *testing.T, w *httptest.ResponseRecorder) {
@@ -141,19 +139,16 @@ func TestUnauthorized_WWWAuthenticate(t *testing.T) {
 }
 
 func TestVerify_BearerSchemeCaseInsensitive(t *testing.T) {
-	const (
-		userID   = "uid-case"
-		username = "usercase"
-	)
+	const email = "case@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: "case@example.com"})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	_, access := env.issueTokens(userID, username, "device")
+	_, access := env.issueTokens(email, "device")
 
 	req := httptest.NewRequest(http.MethodGet, "/verify", nil)
 	req.Header.Set("Authorization", "bEaReR "+access)

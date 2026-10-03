@@ -20,6 +20,7 @@ const (
 	EnvDBConnMaxLifetime    = "DB_CONN_MAX_LIFETIME"
 	EnvDBConnMaxIdleTime    = "DB_CONN_MAX_IDLE_TIME"
 	EnvDBCleanupInterval    = "DB_CLEANUP_INTERVAL"
+	EnvDBAutoCreateSchema   = "DB_AUTO_CREATE_SCHEMA"
 	EnvJWTAccessDuration    = "JWT_ACCESS_TOKEN_DURATION"
 	EnvJWTRefreshDuration   = "JWT_REFRESH_TOKEN_DURATION"
 	EnvRedisURL             = "REDIS_URL"
@@ -76,12 +77,13 @@ func (h *HTTP) DevMode() bool {
 }
 
 type Database struct {
-	URL             string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxLifetime time.Duration
-	ConnMaxIdleTime time.Duration
-	CleanupInterval time.Duration
+	URL              string
+	MaxOpenConns     int
+	MaxIdleConns     int
+	ConnMaxLifetime  time.Duration
+	ConnMaxIdleTime  time.Duration
+	CleanupInterval  time.Duration
+	AutoCreateSchema bool
 }
 
 type JWT struct {
@@ -154,14 +156,16 @@ func loadDatabase(env *envReader) *Database {
 	if url == "" {
 		return nil
 	}
-	return &Database{
-		URL:             url,
-		MaxOpenConns:    env.integer(EnvDBMaxOpenConns, DefaultDBMaxOpenConns),
-		MaxIdleConns:    env.integer(EnvDBMaxIdleConns, DefaultDBMaxIdleConns),
-		ConnMaxLifetime: env.duration(EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime, time.Minute),
-		ConnMaxIdleTime: env.duration(EnvDBConnMaxIdleTime, DefaultDBConnMaxIdleTime, time.Minute),
-		CleanupInterval: env.duration(EnvDBCleanupInterval, DefaultDBCleanupInterval, time.Hour),
+	db := &Database{
+		URL:              url,
+		MaxOpenConns:     env.integer(EnvDBMaxOpenConns, DefaultDBMaxOpenConns),
+		MaxIdleConns:     env.integer(EnvDBMaxIdleConns, DefaultDBMaxIdleConns),
+		ConnMaxLifetime:  env.duration(EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime, time.Minute),
+		ConnMaxIdleTime:  env.duration(EnvDBConnMaxIdleTime, DefaultDBConnMaxIdleTime, time.Minute),
+		CleanupInterval:  env.duration(EnvDBCleanupInterval, DefaultDBCleanupInterval, time.Hour),
+		AutoCreateSchema: isTrue(EnvDBAutoCreateSchema),
 	}
+	return db
 }
 
 func loadJWT(env *envReader) *JWT {

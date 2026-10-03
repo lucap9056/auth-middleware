@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lucap9056/auth-middleware/jwt"
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/refreshtoken"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/response"
@@ -13,12 +13,14 @@ import (
 
 type Handler struct {
 	db         options.DB
+	usersDB    options.UsersDB
 	jwtManager *jwt.JWTManager
 }
 
-func New(db options.DB, jwtManager *jwt.JWTManager) *Handler {
+func New(db options.DB, usersDB options.UsersDB, jwtManager *jwt.JWTManager) *Handler {
 	return &Handler{
 		db:         db,
+		usersDB:    usersDB,
 		jwtManager: jwtManager,
 	}
 }
@@ -44,8 +46,11 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("X-Forwarded-User-ID", claims.UserID)
+	w.Header().Set("X-Forwarded-User-Email", claims.UserEmail)
 	w.Header().Set("X-Forwarded-Device-ID", claims.DeviceID)
+	if claims.Username != "" {
+		w.Header().Set("X-Forwarded-Username", claims.Username)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -79,14 +84,14 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := claims.UserID
+	userEmail := claims.UserEmail
 
-	if err := h.db.DeleteAllDevices(userID); err != nil {
+	if err := h.db.DeleteAllDevices(userEmail); err != nil {
 		response.JSON(w, false, "Failed to remove device sessions", http.StatusInternalServerError, err)
 		return
 	}
 
-	if err := h.db.DeleteUser(userID); err != nil {
+	if err := h.usersDB.DeleteUser(userEmail); err != nil {
 		response.JSON(w, false, "Failed to delete account", http.StatusInternalServerError, err)
 		return
 	}

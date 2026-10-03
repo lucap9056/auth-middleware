@@ -1,15 +1,17 @@
 package options
 
-import "github.com/lucap9056/auth-middleware/database"
+import "github.com/lucap9056/auth-middleware/oauth2/internal/usersdb"
 
 type DB interface {
-	GetUserFromEmail(email string) (*database.User, error)
-	GetUserFromID(userID string) (*database.User, error)
-	CreateUser(username, email string) (*database.User, error)
-	SaveDeviceSecret(userID, deviceName, secret string) (string, error)
-	DeleteDevice(userID, deviceID string) error
-	DeleteAllDevices(userID string) error
-	DeleteUser(userID string) error
+	SaveDeviceSecret(userEmail, deviceName, secret string) (string, error)
+	DeleteDevice(userEmail, deviceID string) error
+	DeleteAllDevices(userEmail string) error
+}
+
+type UsersDB interface {
+	CreateUser(username, email string) (*usersdb.User, error)
+	GetUsername(email string) (string, error)
+	DeleteUser(email string) error
 }
 
 type Options struct {

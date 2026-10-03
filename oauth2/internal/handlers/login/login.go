@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/lucap9056/auth-middleware/jwt"
+	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
@@ -20,8 +22,9 @@ import (
 )
 
 const (
-	flightKeyPrefix = "exchange:"
-	exchangeTimeout = 30 * time.Second
+	flightKeyPrefix         = "exchange:"
+	exchangeTimeout         = 30 * time.Second
+	initialDeviceGeneration = 1
 )
 
 type OAuth2Client interface {
@@ -34,6 +37,7 @@ type OAuth2Client interface {
 
 type Handler struct {
 	db           options.DB
+	users        options.UsersDB
 	jwtManager   *jwt.JWTManager
 	stateCache   state.Cache
 	oauth2Client OAuth2Client
@@ -41,9 +45,10 @@ type Handler struct {
 	options      *options.Options
 }
 
-func New(db options.DB, jwtManager *jwt.JWTManager, stateCache state.Cache, oauth2Client OAuth2Client, flightGroup *flight.Group, opts *options.Options) *Handler {
+func New(db options.DB, users options.UsersDB, jwtManager *jwt.JWTManager, stateCache state.Cache, oauth2Client OAuth2Client, flightGroup *flight.Group, opts *options.Options) *Handler {
 	return &Handler{
 		db:           db,
+		users:        users,
 		jwtManager:   jwtManager,
 		stateCache:   stateCache,
 		oauth2Client: oauth2Client,
@@ -71,6 +76,12 @@ func generateState() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func generateDeviceSecret() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -240,38 +251,43 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 				}, err
 			}
 
-			dbUser, err := h.db.GetUserFromEmail(user.Email)
+			username, err := h.users.GetUsername(user.Email)
+			if errors.Is(err, database.ErrUserNotFound) && h.options.AllowRegistration {
+				createdUser, createErr := h.users.CreateUser(user.Name, user.Email)
+				if createErr != nil {
+					return &ExchangeResponse{
+						Success: false,
+						Message: "Failed to create user",
+						State:   http.StatusInternalServerError,
+					}, createErr
+				}
+				username, err = createdUser.Username, nil
+			}
+			if errors.Is(err, database.ErrUserNotFound) {
+				return &ExchangeResponse{
+					Success: false,
+					Message: "User not found",
+					State:   http.StatusUnauthorized,
+				}, nil
+			}
 			if err != nil {
 				return &ExchangeResponse{
 					Success: false,
-					Message: "Database error",
+					Message: "Failed to fetch username",
 					State:   http.StatusInternalServerError,
 				}, err
 			}
 
-			if dbUser == nil {
-				if h.options.AllowRegistration {
-					dbUser, err = h.db.CreateUser(user.Name, user.Email)
-					if err != nil {
-						return &ExchangeResponse{
-							Success: false,
-							Message: "Failed to create user",
-							State:   http.StatusInternalServerError,
-						}, err
-					}
-				} else {
-					return &ExchangeResponse{
-						Success: false,
-						Message: "User not found",
-						State:   http.StatusUnauthorized,
-					}, nil
-				}
+			secret := generateDeviceSecret()
+
+			deviceID, err := h.db.SaveDeviceSecret(user.Email, device, secret)
+			if errors.Is(err, database.ErrUserNotFound) {
+				return &ExchangeResponse{
+					Success: false,
+					Message: "User not found",
+					State:   http.StatusUnauthorized,
+				}, nil
 			}
-
-			userID := fmt.Sprint(dbUser.UserID)
-			secret := h.jwtManager.GenerateRandomSecret()
-
-			deviceID, err := h.db.SaveDeviceSecret(userID, device, secret)
 			if err != nil {
 				return &ExchangeResponse{
 					Success: false,
@@ -280,22 +296,22 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 				}, err
 			}
 
-			refreshToken, err := h.jwtManager.GenerateRefresh(userID, deviceID, secret)
+			refreshToken, err := h.jwtManager.GenerateRefresh(user.Email, deviceID, secret, initialDeviceGeneration)
 			if err != nil {
 				return &ExchangeResponse{
 					Success: false,
 					Message: "Refresh token generation failed",
 					State:   http.StatusInternalServerError,
-				}, err
+				}, errors.Join(err, h.db.DeleteDevice(user.Email, deviceID))
 			}
 
-			accessToken, err := h.jwtManager.GenerateAccess(refreshToken, dbUser.Username)
+			accessToken, err := h.jwtManager.GenerateAccess(refreshToken, username)
 			if err != nil {
 				return &ExchangeResponse{
 					Success: false,
 					Message: "Access token generation failed",
 					State:   http.StatusInternalServerError,
-				}, err
+				}, errors.Join(err, h.db.DeleteDevice(user.Email, deviceID))
 			}
 
 			if !h.options.PassOAuthToken {

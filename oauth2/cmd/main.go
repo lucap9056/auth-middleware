@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -11,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucap9056/auth-middleware/database"
-	"github.com/lucap9056/auth-middleware/jwt"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/device"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/cache/state"
@@ -23,6 +25,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/usersdb"
 	"github.com/lucap9056/go-lifecycle/v2/lifecycle"
 	"github.com/lucap9056/go-lifecycle/v2/runner"
 )
@@ -39,19 +42,12 @@ func run(life *lifecycle.Coordinator) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	var db *database.Database
+	var store *usersdb.Store
 	if cfg.Database != nil {
-		db, err = database.NewDatabase(cfg.Database.URL,
-			database.WithMaxOpenConns(cfg.Database.MaxOpenConns),
-			database.WithMaxIdleConns(cfg.Database.MaxIdleConns),
-			database.WithConnMaxLifetime(cfg.Database.ConnMaxLifetime),
-			database.WithConnMaxIdleTime(cfg.Database.ConnMaxIdleTime),
-			database.WithCleanupInterval(cfg.Database.CleanupInterval),
-		)
+		store, err = openDatabase(life, cfg.Database)
 		if err != nil {
-			return fmt.Errorf("failed to open database: %w", err)
+			return err
 		}
-		life.OnExit(func() { db.Close() })
 	}
 
 	var redisClient *cache.RedisClient
@@ -72,11 +68,13 @@ func run(life *lifecycle.Coordinator) error {
 	life.OnExit(func() { deviceCache.Close() })
 
 	var jwtDB jwt.Database
-	var handlerDB options.DB
-	if db != nil {
-		cachedDB := device.NewCachedDB(db, deviceCache)
+	var authDB options.DB
+	var usersDB options.UsersDB
+	if store != nil {
+		cachedDB := device.NewCachedDB(store.Database, deviceCache)
 		jwtDB = cachedDB
-		handlerDB = cachedDB
+		authDB = cachedDB
+		usersDB = store
 	}
 
 	jwtManager := jwt.NewJWTManager(jwtDB,
@@ -110,7 +108,8 @@ func run(life *lifecycle.Coordinator) error {
 	mux := http.NewServeMux()
 
 	handlers.RegisterRoutes(mux, handlers.Dependencies{
-		DB:           handlerDB,
+		DB:           authDB,
+		UsersDB:      usersDB,
 		JWTManager:   jwtManager,
 		Flight:       flightGroup,
 		StateCache:   stateCache,
@@ -144,6 +143,31 @@ func run(life *lifecycle.Coordinator) error {
 	})
 
 	return nil
+}
+
+func openDatabase(life *lifecycle.Coordinator, cfg *config.Database) (*usersdb.Store, error) {
+	sqlDB, err := sql.Open("pgx", cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	life.OnExit(func() { sqlDB.Close() })
+	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
+	usersOptions := []usersdb.Option{
+		usersdb.WithAutoCreateSchema(cfg.AutoCreateSchema),
+		usersdb.WithDatabaseOptions(database.WithCleanupInterval(cfg.CleanupInterval)),
+	}
+
+	store, err := usersdb.New(sqlDB, usersOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	life.OnExit(func() { store.Close() })
+
+	return store, nil
 }
 
 func newOAuth2Client(cfg *config.Config) (login.OAuth2Client, error) {
