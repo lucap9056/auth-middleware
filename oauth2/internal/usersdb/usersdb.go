@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	_ "embed"
 	"errors"
+	"fmt"
 	"strings"
 	"text/template"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/lucap9056/auth-middleware/database/v2"
 	"github.com/lucap9056/auth-middleware/database/v2/schema"
 )
@@ -75,7 +77,7 @@ func New(db *sql.DB, opts ...Option) (*Store, error) {
 
 func newStore(db *sql.DB, cfg *options) (*Store, error) {
 	if cfg.external != nil {
-		return &Store{db: db, external: true}, nil
+		return newExternal(db, cfg.external)
 	}
 
 	if cfg.autoCreateSchema {
@@ -87,6 +89,26 @@ func newStore(db *sql.DB, cfg *options) (*Store, error) {
 	}
 
 	return &Store{db: db, selectUsernameQuery: "SELECT username FROM users WHERE email = $1"}, nil
+}
+
+func newExternal(db *sql.DB, cfg *externalOptions) (*Store, error) {
+	store := &Store{db: db, external: true}
+	if cfg.usernameColumn == "" {
+		return store, nil
+	}
+
+	params, err := schema.ParseUserEmailReference(cfg.userEmailReference)
+	if err != nil {
+		return nil, err
+	}
+	column := pgx.Identifier{cfg.usernameColumn}.Sanitize()
+
+	if err := probe(db, fmt.Sprintf("SELECT %s FROM %s LIMIT 0", column, params.UsersTable)); err != nil {
+		return nil, err
+	}
+
+	store.selectUsernameQuery = fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", column, params.UsersTable, params.UsersEmailColumn)
+	return store, nil
 }
 
 func probe(db *sql.DB, query string) error {

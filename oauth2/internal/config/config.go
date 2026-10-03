@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ const (
 	EnvDBCleanupInterval    = "DB_CLEANUP_INTERVAL"
 	EnvDBAutoCreateSchema   = "DB_AUTO_CREATE_SCHEMA"
 	EnvDBUserEmailReference = "DB_USER_EMAIL_REFERENCE"
+	EnvDBUserUsernameColumn = "DB_USER_USERNAME_COLUMN"
 	EnvJWTAccessDuration    = "JWT_ACCESS_TOKEN_DURATION"
 	EnvJWTRefreshDuration   = "JWT_REFRESH_TOKEN_DURATION"
 	EnvRedisURL             = "REDIS_URL"
@@ -58,7 +60,11 @@ var (
 	ErrGenericProviderMissingURLs = errors.New("generic OAuth2 provider requires AUTH_URL, TOKEN_URL, and USERINFO_URL")
 	ErrInvalidInteger             = errors.New("invalid integer")
 	ErrNonPositiveDuration        = errors.New("duration must be positive")
+	ErrInvalidUsernameColumn      = errors.New("invalid username column")
+	ErrUsernameColumnWithoutRef   = errors.New("DB_USER_USERNAME_COLUMN requires DB_USER_EMAIL_REFERENCE")
 )
+
+var identifierPattern = regexp.MustCompile("^[a-z_][a-z0-9_]*$")
 
 type Config struct {
 	HTTP     *HTTP
@@ -87,6 +93,7 @@ type Database struct {
 	CleanupInterval    time.Duration
 	AutoCreateSchema   bool
 	UserEmailReference string
+	UserUsernameColumn string
 }
 
 type JWT struct {
@@ -168,10 +175,18 @@ func loadDatabase(env *envReader) *Database {
 		CleanupInterval:    env.duration(EnvDBCleanupInterval, DefaultDBCleanupInterval, time.Hour),
 		AutoCreateSchema:   isTrue(EnvDBAutoCreateSchema),
 		UserEmailReference: os.Getenv(EnvDBUserEmailReference),
+		UserUsernameColumn: strings.ToLower(strings.TrimSpace(os.Getenv(EnvDBUserUsernameColumn))),
 	}
 	if db.UserEmailReference != "" {
 		if _, err := schema.ParseUserEmailReference(db.UserEmailReference); err != nil {
 			env.fail(fmt.Errorf("%s: %w", EnvDBUserEmailReference, err))
+		}
+	}
+	if db.UserUsernameColumn != "" {
+		if db.UserEmailReference == "" {
+			env.fail(ErrUsernameColumnWithoutRef)
+		} else if !identifierPattern.MatchString(db.UserUsernameColumn) {
+			env.fail(fmt.Errorf("%s: %w: %q", EnvDBUserUsernameColumn, ErrInvalidUsernameColumn, db.UserUsernameColumn))
 		}
 	}
 	return db

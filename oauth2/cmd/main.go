@@ -167,7 +167,7 @@ func openDatabase(life *lifecycle.Coordinator, cfg *config.Database) (*usersdb.S
 		usersdb.WithDatabaseOptions(database.WithCleanupInterval(cfg.CleanupInterval)),
 	}
 	if cfg.UserEmailReference != "" {
-		usersOptions = append(usersOptions, usersdb.WithExternal(cfg.UserEmailReference))
+		usersOptions = append(usersOptions, usersdb.WithExternal(cfg.UserEmailReference, cfg.UserUsernameColumn))
 	}
 
 	store, err := usersdb.New(sqlDB, usersOptions...)

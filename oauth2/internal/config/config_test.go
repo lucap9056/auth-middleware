@@ -12,7 +12,7 @@ import (
 var allEnvKeys = []string{
 	EnvHTTPAddress, EnvHTTPMode, EnvDatabaseURL, EnvRedisURL,
 	EnvDBMaxOpenConns, EnvDBMaxIdleConns, EnvDBConnMaxLifetime, EnvDBConnMaxIdleTime, EnvDBCleanupInterval,
-	EnvDBAutoCreateSchema, EnvDBUserEmailReference,
+	EnvDBAutoCreateSchema, EnvDBUserEmailReference, EnvDBUserUsernameColumn,
 	EnvJWTAccessDuration, EnvJWTRefreshDuration,
 	EnvOAuth2Provider, EnvOAuth2ClientID, EnvOAuth2ClientSecret, EnvOAuth2RedirectURL,
 	EnvOAuth2AuthURL, EnvOAuth2TokenURL, EnvOAuth2UserinfoURL, EnvOAuth2RevokeURL,
@@ -107,6 +107,7 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		EnvDBCleanupInterval:    "12",
 		EnvDBAutoCreateSchema:   "true",
 		EnvDBUserEmailReference: "auth.members(mail):citext",
+		EnvDBUserUsernameColumn: " Display_Name ",
 		EnvJWTAccessDuration:    "30m",
 		EnvJWTRefreshDuration:   "1d12h",
 	})
@@ -124,6 +125,7 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		CleanupInterval:    12 * time.Hour,
 		AutoCreateSchema:   true,
 		UserEmailReference: "auth.members(mail):citext",
+		UserUsernameColumn: "display_name",
 	}
 	if cfg.Database == nil || *cfg.Database != expectedDatabase {
 		t.Errorf("Database: got %+v, want %+v", cfg.Database, expectedDatabase)
@@ -249,6 +251,20 @@ func TestLoad_Validation(t *testing.T) {
 			name:        "invalid user email reference",
 			env:         map[string]string{EnvDatabaseURL: "postgres://localhost/auth", EnvDBUserEmailReference: "users"},
 			expectedErr: schema.ErrInvalidUserEmailReference,
+		},
+		{
+			name:        "username column without reference",
+			env:         map[string]string{EnvDatabaseURL: "postgres://localhost/auth", EnvDBUserUsernameColumn: "name"},
+			expectedErr: ErrUsernameColumnWithoutRef,
+		},
+		{
+			name: "invalid username column",
+			env: map[string]string{
+				EnvDatabaseURL:          "postgres://localhost/auth",
+				EnvDBUserEmailReference: "users(email)",
+				EnvDBUserUsernameColumn: "name; drop",
+			},
+			expectedErr: ErrInvalidUsernameColumn,
 		},
 		{
 			name:        "jwt duration without unit",
