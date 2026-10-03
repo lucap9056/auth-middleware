@@ -27,6 +27,8 @@ const (
 	EnvDBUserUsernameColumn = "DB_USER_USERNAME_COLUMN"
 	EnvJWTAccessDuration    = "JWT_ACCESS_TOKEN_DURATION"
 	EnvJWTRefreshDuration   = "JWT_REFRESH_TOKEN_DURATION"
+	EnvJWTIssuer            = "JWT_ISSUER"
+	EnvJWTAudience          = "JWT_AUDIENCE"
 	EnvRedisURL             = "REDIS_URL"
 	EnvOAuth2Provider       = "OAUTH2_PROVIDER"
 	EnvOAuth2ClientID       = "OAUTH2_CLIENT_ID"
@@ -99,6 +101,8 @@ type Database struct {
 type JWT struct {
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
+	Issuer               string
+	Audience             string
 }
 
 type Redis struct {
@@ -196,6 +200,8 @@ func loadJWT(env *envReader) *JWT {
 	jwt := &JWT{
 		AccessTokenDuration:  env.duration(EnvJWTAccessDuration, DefaultJWTAccessDuration, 0),
 		RefreshTokenDuration: env.duration(EnvJWTRefreshDuration, DefaultJWTRefreshDuration, 0),
+		Issuer:               os.Getenv(EnvJWTIssuer),
+		Audience:             os.Getenv(EnvJWTAudience),
 	}
 	if jwt.AccessTokenDuration <= 0 {
 		env.fail(fmt.Errorf("%s: %w", EnvJWTAccessDuration, ErrNonPositiveDuration))

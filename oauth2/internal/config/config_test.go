@@ -13,7 +13,7 @@ var allEnvKeys = []string{
 	EnvHTTPAddress, EnvHTTPMode, EnvDatabaseURL, EnvRedisURL,
 	EnvDBMaxOpenConns, EnvDBMaxIdleConns, EnvDBConnMaxLifetime, EnvDBConnMaxIdleTime, EnvDBCleanupInterval,
 	EnvDBAutoCreateSchema, EnvDBUserEmailReference, EnvDBUserUsernameColumn,
-	EnvJWTAccessDuration, EnvJWTRefreshDuration,
+	EnvJWTAccessDuration, EnvJWTRefreshDuration, EnvJWTIssuer, EnvJWTAudience,
 	EnvOAuth2Provider, EnvOAuth2ClientID, EnvOAuth2ClientSecret, EnvOAuth2RedirectURL,
 	EnvOAuth2AuthURL, EnvOAuth2TokenURL, EnvOAuth2UserinfoURL, EnvOAuth2RevokeURL,
 	EnvOAuth2Scopes, EnvOAuth2ClientPKCE, EnvOIDCIssuerURL,
@@ -110,6 +110,8 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		EnvDBUserUsernameColumn: " Display_Name ",
 		EnvJWTAccessDuration:    "30m",
 		EnvJWTRefreshDuration:   "1d12h",
+		EnvJWTIssuer:            "https://auth.example.com",
+		EnvJWTAudience:          "api",
 	})
 
 	cfg, err := Load()
@@ -133,6 +135,8 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 	expectedJWT := JWT{
 		AccessTokenDuration:  30 * time.Minute,
 		RefreshTokenDuration: 36 * time.Hour,
+		Issuer:               "https://auth.example.com",
+		Audience:             "api",
 	}
 	if *cfg.JWT != expectedJWT {
 		t.Errorf("JWT: got %+v, want %+v", cfg.JWT, expectedJWT)
