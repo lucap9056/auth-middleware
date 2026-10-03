@@ -11,8 +11,11 @@ import (
 	"sync"
 	"testing"
 
+	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/response"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/session"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/identity"
 )
 
 func TestHealth(t *testing.T) {
@@ -803,6 +806,52 @@ func TestVerify_ForwardsUsername(t *testing.T) {
 	}
 	if got := w.Header().Get("X-Forwarded-Username"); got != "Verify Name" {
 		t.Errorf("X-Forwarded-Username: want %q, got %q", "Verify Name", got)
+	}
+}
+
+func TestVerify_IdentityToken(t *testing.T) {
+	const email = "identity@example.com"
+	const secret = "0123456789abcdef0123456789abcdef"
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUser(email)
+	env := newTestEnvWithIdentity(stub, db, nil, identity.NewSigner(secret, "", ""))
+
+	refresh, _ := env.issueTokens(email, "device")
+	access, err := env.jwtManager.GenerateAccess(refresh, "Identity Name")
+	if err != nil {
+		t.Fatalf("GenerateAccess: %v", err)
+	}
+	accessClaims, err := env.jwtManager.VerifyAccess(access)
+	if err != nil {
+		t.Fatalf("VerifyAccess: %v", err)
+	}
+
+	w := verifyWith(env, access)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	for _, header := range []string{"X-Forwarded-User-Email", "X-Forwarded-Username", "X-Forwarded-Device-ID"} {
+		if got := w.Header().Get(header); got != "" {
+			t.Errorf("%s: want empty, got %q", header, got)
+		}
+	}
+
+	claims := &identity.Claims{}
+	token, err := gojwt.ParseWithClaims(w.Header().Get(session.IdentityHeader), claims, func(*gojwt.Token) (any, error) {
+		return []byte(secret), nil
+	}, gojwt.WithValidMethods([]string{gojwt.SigningMethodHS256.Alg()}))
+	if err != nil {
+		t.Fatalf("parse identity token: %v", err)
+	}
+	if typ := token.Header["typ"]; typ != identity.TokenType {
+		t.Errorf("typ: got %v, want %q", typ, identity.TokenType)
+	}
+	if claims.Subject != email || claims.Username != "Identity Name" || claims.DeviceID != accessClaims.DeviceID {
+		t.Errorf("claims: got %+v", claims)
 	}
 }
 

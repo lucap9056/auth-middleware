@@ -9,19 +9,24 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/refreshtoken"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/response"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/identity"
 )
 
 type Handler struct {
-	db         options.DB
-	usersDB    options.UsersDB
-	jwtManager *jwt.JWTManager
+	db             options.DB
+	usersDB        options.UsersDB
+	jwtManager     *jwt.JWTManager
+	identitySigner *identity.Signer
 }
 
-func New(db options.DB, usersDB options.UsersDB, jwtManager *jwt.JWTManager) *Handler {
+const IdentityHeader = "X-Forwarded-Identity"
+
+func New(db options.DB, usersDB options.UsersDB, jwtManager *jwt.JWTManager, identitySigner *identity.Signer) *Handler {
 	return &Handler{
-		db:         db,
-		usersDB:    usersDB,
-		jwtManager: jwtManager,
+		db:             db,
+		usersDB:        usersDB,
+		jwtManager:     jwtManager,
+		identitySigner: identitySigner,
 	}
 }
 
@@ -47,10 +52,19 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("X-Forwarded-User-Email", claims.UserEmail)
-	w.Header().Set("X-Forwarded-Device-ID", claims.DeviceID)
-	if claims.Username != "" {
-		w.Header().Set("X-Forwarded-Username", claims.Username)
+	if h.identitySigner != nil {
+		identityToken, err := h.identitySigner.Sign(claims.UserEmail, claims.Username, claims.DeviceID, claims.ExpiresAt)
+		if err != nil {
+			response.JSON(w, false, "Failed to sign identity token", http.StatusInternalServerError, err)
+			return
+		}
+		w.Header().Set(IdentityHeader, identityToken)
+	} else {
+		w.Header().Set("X-Forwarded-User-Email", claims.UserEmail)
+		w.Header().Set("X-Forwarded-Device-ID", claims.DeviceID)
+		if claims.Username != "" {
+			w.Header().Set("X-Forwarded-Username", claims.Username)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

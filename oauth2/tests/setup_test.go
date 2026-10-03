@@ -17,6 +17,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/identity"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/usersdb"
 )
@@ -252,6 +253,10 @@ func newOIDCTestEnv(t *testing.T, stub *oauthStub, db *mockDB, opts ...options.O
 }
 
 func newTestEnvWithClient(stub *oauthStub, db *mockDB, oauth2Client login.OAuth2Client, opts ...options.Option) *testEnv {
+	return newTestEnvWithIdentity(stub, db, oauth2Client, nil, opts...)
+}
+
+func newTestEnvWithIdentity(stub *oauthStub, db *mockDB, oauth2Client login.OAuth2Client, identitySigner *identity.Signer, opts ...options.Option) *testEnv {
 	var jwtDB jwt.Database
 	var handlerDB options.DB
 	var usersDB options.UsersDB
@@ -272,13 +277,14 @@ func newTestEnvWithClient(stub *oauthStub, db *mockDB, oauth2Client login.OAuth2
 	}
 	mux := http.NewServeMux()
 	handlers.RegisterRoutes(mux, handlers.Dependencies{
-		DB:           handlerDB,
-		UsersDB:      usersDB,
-		JWTManager:   jwtManager,
-		Flight:       flightGroup,
-		StateCache:   stateCache,
-		OAuth2Client: oauth2Client,
-		Options:      opts,
+		DB:             handlerDB,
+		UsersDB:        usersDB,
+		JWTManager:     jwtManager,
+		IdentitySigner: identitySigner,
+		Flight:         flightGroup,
+		StateCache:     stateCache,
+		OAuth2Client:   oauth2Client,
+		Options:        opts,
 	})
 
 	return &testEnv{stub: stub, db: db, jwtManager: jwtManager, mux: mux}
