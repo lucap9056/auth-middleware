@@ -46,6 +46,7 @@
 | `JWT_REFRESH_TOKEN_DURATION` | `7d` | Refresh token 與 cookie 的有效期，必須帶單位 |
 | `JWT_ISSUER` | — | 簽發 token 時寫入的 `iss` claim，驗證時也會檢查 |
 | `JWT_AUDIENCE` | — | 簽發 token 時寫入的 `aud` claim，驗證時也會檢查 |
+| `IDENTITY_JWT_SECRET` | — | 至少 32 bytes。設定後 `/verify` 改為回傳簽章過的 identity token，取代明文的使用者 header（見 [Identity Token](api.zh-TW.md#identity-token)） |
 
 ## 登入政策
 
