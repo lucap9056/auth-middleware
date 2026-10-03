@@ -44,8 +44,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.HTTP.Address != DefaultHTTPAddress {
 		t.Errorf("HTTP.Address: got %q, want %q", cfg.HTTP.Address, DefaultHTTPAddress)
 	}
-	if !cfg.HTTP.DevMode() {
-		t.Error("expected development mode by default")
+	if cfg.HTTP.Mode != ModeProduction || cfg.HTTP.DevMode() {
+		t.Errorf("HTTP.Mode: got %q, want %q", cfg.HTTP.Mode, ModeProduction)
 	}
 	if cfg.Database != nil {
 		t.Errorf("Database: got %+v, want nil", cfg.Database)
