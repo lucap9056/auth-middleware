@@ -4,6 +4,7 @@ import "github.com/lucap9056/auth-middleware/database/v2"
 
 type externalOptions struct {
 	userEmailReference string
+	usernameColumn     string
 }
 
 type options struct {
@@ -34,10 +35,11 @@ func WithAutoCreateSchema(enabled bool) Option {
 	}
 }
 
-func WithExternal(userEmailReference string) Option {
+func WithExternal(userEmailReference, usernameColumn string) Option {
 	return func(o *options) {
 		o.external = &externalOptions{
 			userEmailReference: userEmailReference,
+			usernameColumn:     usernameColumn,
 		}
 	}
 }
