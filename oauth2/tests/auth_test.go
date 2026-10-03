@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/response"
 )
 
 func TestHealth(t *testing.T) {
@@ -852,5 +853,65 @@ func TestCallback_RegistrationUsesProviderName(t *testing.T) {
 	}
 	if got := accessUsername(t, env, resp.Message.AccessToken); got != "Provider Name" {
 		t.Errorf("username claim: want %q, got %q", "Provider Name", got)
+	}
+}
+
+func refreshAt(env *testEnv, path, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, nil)
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: token})
+	return env.do(req)
+}
+
+func verifyWith(env *testEnv, accessToken string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/verify", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	return env.do(req)
+}
+
+func TestAuthErrorHeader(t *testing.T) {
+	const email = "header@example.com"
+
+	endpoints := map[string]func(env *testEnv, refreshToken, accessToken string) *httptest.ResponseRecorder{
+		"/refresh": func(env *testEnv, r, _ string) *httptest.ResponseRecorder { return refreshAt(env, "/refresh", r) },
+		"/refresh-access": func(env *testEnv, r, _ string) *httptest.ResponseRecorder {
+			return refreshAt(env, "/refresh-access", r)
+		},
+		"/verify": func(env *testEnv, _, a string) *httptest.ResponseRecorder { return verifyWith(env, a) },
+	}
+	cases := []struct {
+		name   string
+		tamper func(db *mockDB)
+		want   string
+	}{
+		{"device not found", func(db *mockDB) { clear(db.devices) }, response.AuthErrorDeviceNotFound},
+		{"invalid signature", func(db *mockDB) {
+			for _, d := range db.devices {
+				d.secret = "rotated-secret"
+			}
+		}, response.AuthErrorInvalidSignature},
+	}
+
+	for path, call := range endpoints {
+		for _, tc := range cases {
+			t.Run(path+" "+tc.name, func(t *testing.T) {
+				stub := newOAuthStub("", "", "")
+				defer stub.Close()
+
+				db := newMockDB()
+				db.seedUser(email)
+				env := newTestEnv(stub, db)
+
+				refreshToken, accessToken := env.issueTokens(email, "device")
+				tc.tamper(db)
+
+				w := call(env, refreshToken, accessToken)
+				if w.Code != http.StatusUnauthorized {
+					t.Fatalf("want 401, got %d: %s", w.Code, w.Body.String())
+				}
+				if got := w.Header().Get(response.AuthErrorHeader); got != tc.want {
+					t.Errorf("%s: want %q, got %q", response.AuthErrorHeader, tc.want, got)
+				}
+			})
+		}
 	}
 }

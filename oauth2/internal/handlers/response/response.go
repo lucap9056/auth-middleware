@@ -2,8 +2,11 @@ package response
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 )
 
 type TokenPair struct {
@@ -34,6 +37,21 @@ const (
 	BearerChallenge       = `Bearer`
 	InvalidTokenChallenge = `Bearer error="invalid_token"`
 )
+
+const (
+	AuthErrorHeader           = "X-Auth-Error"
+	AuthErrorDeviceNotFound   = "device_not_found"
+	AuthErrorInvalidSignature = "invalid_signature"
+)
+
+func SetAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, jwt.ErrDeviceNotFound):
+		w.Header().Set(AuthErrorHeader, AuthErrorDeviceNotFound)
+	case errors.Is(err, jwt.ErrInvalidSignature):
+		w.Header().Set(AuthErrorHeader, AuthErrorInvalidSignature)
+	}
+}
 
 func Unauthorized(w http.ResponseWriter, challenge, message string, internalErr error) {
 	w.Header().Set("WWW-Authenticate", challenge)
