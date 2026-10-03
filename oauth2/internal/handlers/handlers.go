@@ -12,16 +12,18 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/refresh"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/session"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/identity"
 )
 
 type Dependencies struct {
-	DB           options.DB
-	UsersDB      options.UsersDB
-	JWTManager   *jwt.JWTManager
-	Flight       *flight.Group
-	StateCache   state.Cache
-	OAuth2Client login.OAuth2Client
-	Options      []options.Option
+	DB             options.DB
+	UsersDB        options.UsersDB
+	JWTManager     *jwt.JWTManager
+	IdentitySigner *identity.Signer
+	Flight         *flight.Group
+	StateCache     state.Cache
+	OAuth2Client   login.OAuth2Client
+	Options        []options.Option
 }
 
 func RegisterRoutes(mux *http.ServeMux, deps Dependencies) {
@@ -34,7 +36,7 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) {
 		mux.HandleFunc("POST /refresh", refreshHandler.Refresh)
 		mux.HandleFunc("POST /refresh-access", refreshHandler.RefreshAccess)
 
-		sessionHandler := session.New(deps.DB, deps.UsersDB, deps.JWTManager)
+		sessionHandler := session.New(deps.DB, deps.UsersDB, deps.JWTManager, deps.IdentitySigner)
 		mux.HandleFunc("GET /verify", sessionHandler.Verify)
 		mux.HandleFunc("POST /logout", sessionHandler.Logout)
 		if !deps.UsersDB.External() {

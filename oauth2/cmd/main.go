@@ -23,6 +23,7 @@ import (
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/login"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/identity"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/oauthclient"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/usersdb"
@@ -90,6 +91,11 @@ func run(life *lifecycle.Coordinator) error {
 		jwt.WithAudience(cfg.JWT.Audience),
 	)
 
+	var identitySigner *identity.Signer
+	if cfg.JWT.IdentitySecret != "" {
+		identitySigner = identity.NewSigner(cfg.JWT.IdentitySecret, cfg.JWT.Issuer, cfg.JWT.Audience)
+	}
+
 	oauth2Client, err := newOAuth2Client(cfg)
 	if err != nil {
 		return err
@@ -116,13 +122,14 @@ func run(life *lifecycle.Coordinator) error {
 	mux := http.NewServeMux()
 
 	handlers.RegisterRoutes(mux, handlers.Dependencies{
-		DB:           authDB,
-		UsersDB:      usersDB,
-		JWTManager:   jwtManager,
-		Flight:       flightGroup,
-		StateCache:   stateCache,
-		OAuth2Client: oauth2Client,
-		Options:      authOptions,
+		DB:             authDB,
+		UsersDB:        usersDB,
+		JWTManager:     jwtManager,
+		IdentitySigner: identitySigner,
+		Flight:         flightGroup,
+		StateCache:     stateCache,
+		OAuth2Client:   oauth2Client,
+		Options:        authOptions,
 	})
 
 	server := &http.Server{
