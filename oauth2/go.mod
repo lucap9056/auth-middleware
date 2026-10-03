@@ -5,8 +5,10 @@ go 1.25.6
 require golang.org/x/oauth2 v0.36.0
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/lucap9056/auth-middleware/database v1.2.0
+	github.com/lucap9056/auth-middleware/database/v2 v2.1.0
 	github.com/lucap9056/auth-middleware/jwt v1.0.0
 	github.com/lucap9056/go-lifecycle/v2 v2.0.0
 	github.com/maypok86/otter/v2 v2.3.0
