@@ -108,7 +108,7 @@ Durations accept one or more `<integer><unit>` segments with units `d`, `h`, `m`
 | Variable | Default | Description |
 |---|---|---|
 | `HTTP_ADDRESS` | `:80` | Listen address. `unix:///path/to.sock` listens on a Unix socket |
-| `HTTP_MODE` | `development` | In `development`, the `refresh_token` cookie is not marked `Secure`. Set to any other value (e.g. `production`) when serving over HTTPS |
+| `HTTP_MODE` | `production` | Set to `development` to stop marking the `refresh_token` cookie `Secure`, for local testing over plain HTTP |
 | `REDIS_URL` | — | Stores `state`, caches device secrets, and deduplicates `/callback` and `/refresh` across instances. Without it, in-memory equivalents are used, which only work with a single instance |
 
 ### OAuth2 Provider

@@ -108,7 +108,7 @@ Stateless proxy 模式一定會回傳 provider token：預設放在 response bod
 | 變數 | 預設值 | 說明 |
 |---|---|---|
 | `HTTP_ADDRESS` | `:80` | 監聽位址。`unix:///path/to.sock` 會改為監聽 Unix socket |
-| `HTTP_MODE` | `development` | `development` 時 `refresh_token` cookie 不會標記 `Secure`。透過 HTTPS 提供服務時請設為其他值（例如 `production`） |
+| `HTTP_MODE` | `production` | 設為 `development` 時 `refresh_token` cookie 不會標記 `Secure`，用於在本機以 HTTP 測試 |
 | `REDIS_URL` | — | 儲存 `state`、快取 device secret，並跨實例去除重複的 `/callback` 與 `/refresh`。未設定時改用記憶體實作，只適用單一實例 |
 
 ### OAuth2 Provider

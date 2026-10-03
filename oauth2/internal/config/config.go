@@ -47,6 +47,7 @@ const (
 
 	DefaultHTTPAddress = ":80"
 	ModeDevelopment    = "development"
+	ModeProduction     = "production"
 
 	DefaultDBMaxOpenConns     = 20
 	DefaultDBMaxIdleConns     = 15
@@ -146,7 +147,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		HTTP: &HTTP{
 			Address: stringOr(EnvHTTPAddress, DefaultHTTPAddress),
-			Mode:    stringOr(EnvHTTPMode, ModeDevelopment),
+			Mode:    stringOr(EnvHTTPMode, ModeProduction),
 		},
 		Database: loadDatabase(env),
 		JWT:      loadJWT(env),

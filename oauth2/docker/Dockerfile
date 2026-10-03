@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -v -ldflags "-X main.mode=production" -o /dist/oauth2 ./cmd
+    go build -v -o /dist/oauth2 ./cmd
 
 
 FROM alpine:latest
