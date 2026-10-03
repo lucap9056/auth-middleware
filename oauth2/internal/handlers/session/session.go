@@ -42,6 +42,7 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := h.jwtManager.VerifyAccess(tokenStr)
 	if err != nil {
+		response.SetAuthError(w, err)
 		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid access token", err)
 		return
 	}
@@ -80,6 +81,7 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := h.jwtManager.VerifyAccess(tokenStr)
 	if err != nil {
+		response.SetAuthError(w, err)
 		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid access token", err)
 		return
 	}

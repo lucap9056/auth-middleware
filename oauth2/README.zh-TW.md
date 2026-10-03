@@ -99,6 +99,15 @@ Stateless proxy 模式一定會回傳 provider token：預設放在 response bod
 
 `/verify` 設計給 reverse proxy 的 auth request 使用（例如 nginx `auth_request`、Traefik `forwardAuth`），將回傳的 header 轉發給 upstream service。
 
+### Error Header
+
+當 `401` 是由 token 的 device session 造成時，`/refresh`、`/refresh-access`、`/verify` 與 `DELETE /users/me` 會加上 `X-Auth-Error` header，讓 gateway 能與過期或格式錯誤的 token 區分：
+
+| 值 | 原因 |
+|---|---|
+| `device_not_found` | Device session 已不存在 |
+| `invalid_signature` | Signature 與 device secret 不符 |
+
 ## 設定
 
 時間格式由一或多段 `<整數><單位>` 組成，單位為 `d`、`h`、`m`、`s`（例如 `30m`、`7d`、`1d12h`）。格式錯誤時 server 會在啟動時失敗。

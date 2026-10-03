@@ -69,6 +69,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &rotateErr) {
 			if rotateErr.status == http.StatusUnauthorized {
 				w.Header().Set("WWW-Authenticate", response.InvalidTokenChallenge)
+				response.SetAuthError(w, rotateErr.err)
 			}
 			response.JSON(w, false, rotateErr.message, rotateErr.status, rotateErr.err)
 			return
@@ -123,6 +124,7 @@ func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := h.jwtManager.VerifyRefresh(refreshToken)
 	if err != nil {
+		response.SetAuthError(w, err)
 		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid session or expired refresh token", err)
 		return
 	}
@@ -139,6 +141,7 @@ func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := h.jwtManager.GenerateAccess(refreshToken, username)
 	if errors.Is(err, jwt.ErrInvalidToken) {
+		response.SetAuthError(w, err)
 		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid session or expired refresh token", err)
 		return
 	}

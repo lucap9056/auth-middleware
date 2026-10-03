@@ -186,7 +186,7 @@ func (m *mockDB) GetDeviceSecret(deviceID string) (string, int, error) {
 	defer m.mu.Unlock()
 	d, ok := m.devices[deviceID]
 	if !ok {
-		return "", 0, fmt.Errorf("device %s not found", deviceID)
+		return "", 0, jwt.ErrDeviceNotFound
 	}
 	return d.secret, d.generation, nil
 }

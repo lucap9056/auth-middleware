@@ -1,7 +1,11 @@
 package device
 
 import (
+	"database/sql"
+	"errors"
+
 	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -22,6 +26,9 @@ func (c *CachedDB) GetDeviceSecret(deviceID string) (string, int, error) {
 
 	v, err, _ := c.secretLoads.Do(deviceID, func() (any, error) {
 		value, generation, err := c.Database.GetDeviceSecret(deviceID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Secret{}, jwt.ErrDeviceNotFound
+		}
 		if err != nil {
 			return Secret{}, err
 		}

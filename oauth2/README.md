@@ -99,6 +99,15 @@ All JSON responses have the shape `{ "success": bool, "message": ... }`. A missi
 
 `/verify` is meant for a reverse proxy's auth request (e.g. nginx `auth_request`, Traefik `forwardAuth`): forward the returned headers to the upstream service.
 
+### Error Headers
+
+When a `401` is caused by the token's device session, `/refresh`, `/refresh-access`, `/verify`, and `DELETE /users/me` add an `X-Auth-Error` header, so a gateway can tell these failures apart from expired or malformed tokens:
+
+| Value | Cause |
+|---|---|
+| `device_not_found` | The device session no longer exists |
+| `invalid_signature` | The signature does not match the device secret |
+
 ## Configuration
 
 Durations accept one or more `<integer><unit>` segments with units `d`, `h`, `m`, `s` (e.g. `30m`, `7d`, `1d12h`). Invalid values stop the server on startup.
