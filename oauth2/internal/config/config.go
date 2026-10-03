@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lucap9056/auth-middleware/database/v2/schema"
+	"github.com/lucap9056/auth-middleware/oauth2/internal/identity"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 )
 
@@ -29,6 +30,7 @@ const (
 	EnvJWTRefreshDuration   = "JWT_REFRESH_TOKEN_DURATION"
 	EnvJWTIssuer            = "JWT_ISSUER"
 	EnvJWTAudience          = "JWT_AUDIENCE"
+	EnvIdentityJWTSecret    = "IDENTITY_JWT_SECRET"
 	EnvRedisURL             = "REDIS_URL"
 	EnvOAuth2Provider       = "OAUTH2_PROVIDER"
 	EnvOAuth2ClientID       = "OAUTH2_CLIENT_ID"
@@ -65,6 +67,7 @@ var (
 	ErrNonPositiveDuration        = errors.New("duration must be positive")
 	ErrInvalidUsernameColumn      = errors.New("invalid username column")
 	ErrUsernameColumnWithoutRef   = errors.New("DB_USER_USERNAME_COLUMN requires DB_USER_EMAIL_REFERENCE")
+	ErrIdentitySecretTooShort     = fmt.Errorf("IDENTITY_JWT_SECRET must be at least %d bytes", identity.MinSecretLength)
 )
 
 var identifierPattern = regexp.MustCompile("^[a-z_][a-z0-9_]*$")
@@ -104,6 +107,7 @@ type JWT struct {
 	RefreshTokenDuration time.Duration
 	Issuer               string
 	Audience             string
+	IdentitySecret       string
 }
 
 type Redis struct {
@@ -203,12 +207,16 @@ func loadJWT(env *envReader) *JWT {
 		RefreshTokenDuration: env.duration(EnvJWTRefreshDuration, DefaultJWTRefreshDuration, 0),
 		Issuer:               os.Getenv(EnvJWTIssuer),
 		Audience:             os.Getenv(EnvJWTAudience),
+		IdentitySecret:       os.Getenv(EnvIdentityJWTSecret),
 	}
 	if jwt.AccessTokenDuration <= 0 {
 		env.fail(fmt.Errorf("%s: %w", EnvJWTAccessDuration, ErrNonPositiveDuration))
 	}
 	if jwt.RefreshTokenDuration <= 0 {
 		env.fail(fmt.Errorf("%s: %w", EnvJWTRefreshDuration, ErrNonPositiveDuration))
+	}
+	if jwt.IdentitySecret != "" && len(jwt.IdentitySecret) < identity.MinSecretLength {
+		env.fail(ErrIdentitySecretTooShort)
 	}
 	return jwt
 }
