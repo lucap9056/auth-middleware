@@ -14,6 +14,8 @@ var (
 	ErrUnexpectedSigningMethod = errors.New("unexpected token signing method")
 	ErrTypeAssertionFailed     = errors.New("failed to assert token claims")
 	ErrTokenRevoked            = fmt.Errorf("%w: token generation has been revoked", ErrInvalidToken)
+	ErrDeviceNotFound          = fmt.Errorf("%w: device not found", ErrInvalidToken)
+	ErrInvalidSignature        = fmt.Errorf("%w: signature does not match the device secret", ErrInvalidToken)
 )
 
 const (
@@ -175,6 +177,9 @@ func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, str
 	}
 
 	secret, gen, err := m.db.GetDeviceSecret(deviceID)
+	if errors.Is(err, ErrDeviceNotFound) {
+		return claims, "", ErrDeviceNotFound
+	}
 	if err != nil {
 		return claims, "", ErrInvalidToken
 	}
@@ -186,6 +191,9 @@ func verifyToken[T jwt.Claims](m *JWTManager, tokenStr string, claims T) (T, str
 		return []byte(secret), nil
 	}, m.parserOptions()...)
 
+	if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
+		return claims, "", ErrInvalidSignature
+	}
 	if err != nil || !token.Valid {
 		return claims, "", ErrInvalidToken
 	}
