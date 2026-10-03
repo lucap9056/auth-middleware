@@ -1,0 +1,129 @@
+package usersdb
+
+import (
+	"errors"
+	"regexp"
+	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/lucap9056/auth-middleware/database/v2"
+)
+
+const managedSelectQuery = `SELECT username FROM users WHERE email = $1`
+
+func newMock(t *testing.T) (sqlmock.Sqlmock, func(opts ...Option) (*Store, error)) {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		db.Close()
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
+		}
+	})
+	return mock, func(opts ...Option) (*Store, error) { return newStore(db, newOptions(opts)) }
+}
+
+func expectQuery(mock sqlmock.Sqlmock, query string) *sqlmock.ExpectedQuery {
+	return mock.ExpectQuery(regexp.QuoteMeta(query))
+}
+
+func expectSchema(mock sqlmock.Sqlmock) {
+	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock`).WithArgs(schemaAdvisoryLockKey).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`CREATE TABLE IF NOT EXISTS "users"`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectCommit()
+}
+
+func newManagedStore(t *testing.T) (*Store, sqlmock.Sqlmock) {
+	t.Helper()
+	mock, newStore := newMock(t)
+	expectSchema(mock)
+
+	store, err := newStore(WithAutoCreateSchema(true))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return store, mock
+}
+
+func TestNew_ManagedCreatesSchema(t *testing.T) {
+	store, mock := newManagedStore(t)
+	expectQuery(mock, managedSelectQuery).WithArgs("a@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow("Alice"))
+
+	if got, err := store.GetUsername("a@example.com"); err != nil || got != "Alice" {
+		t.Fatalf("GetUsername = %q, %v; want Alice, nil", got, err)
+	}
+}
+
+func TestNew_ManagedWithoutAutoCreateChecksTable(t *testing.T) {
+	mock, newStore := newMock(t)
+	expectQuery(mock, "SELECT user_id, username, email FROM users LIMIT 0").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "username", "email"}))
+
+	if _, err := newStore(); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+}
+
+func TestNew_ManagedWithoutAutoCreateMissingTable(t *testing.T) {
+	mock, newStore := newMock(t)
+	expectQuery(mock, "SELECT user_id, username, email FROM users LIMIT 0").
+		WillReturnError(errors.New(`relation "users" does not exist`))
+
+	if _, err := newStore(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestNew_PropagatesDatabaseError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	expectSchema(mock)
+
+	if _, err := New(db, WithAutoCreateSchema(true)); !errors.Is(err, database.ErrUnsupportedDriver) {
+		t.Fatalf("err = %v; want ErrUnsupportedDriver", err)
+	}
+}
+
+func TestGetUsername_NullIsEmpty(t *testing.T) {
+	store, mock := newManagedStore(t)
+	expectQuery(mock, managedSelectQuery).WithArgs("a@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}).AddRow(nil))
+
+	if got, err := store.GetUsername("a@example.com"); err != nil || got != "" {
+		t.Fatalf("GetUsername = %q, %v; want empty, nil", got, err)
+	}
+}
+
+func TestGetUsername_UnknownUser(t *testing.T) {
+	store, mock := newManagedStore(t)
+	expectQuery(mock, managedSelectQuery).WithArgs("missing@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"username"}))
+
+	if _, err := store.GetUsername("missing@example.com"); !errors.Is(err, database.ErrUserNotFound) {
+		t.Fatalf("err = %v; want ErrUserNotFound", err)
+	}
+}
+
+func TestCreateUser_ReturnsExistingUserOnConflict(t *testing.T) {
+	store, mock := newManagedStore(t)
+	expectQuery(mock, "INSERT INTO users (username, email) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING user_id, username, email").
+		WithArgs("New Name", "a@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "username", "email"}).AddRow("id-1", "Existing Name", "a@example.com"))
+
+	user, err := store.CreateUser("New Name", "a@example.com")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if user.Username != "Existing Name" {
+		t.Errorf("Username = %q; want existing user's name", user.Username)
+	}
+}
