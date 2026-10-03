@@ -63,10 +63,10 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
           tags: |
-            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current }}
-            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current_no_v }}
-            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current_major_minor }}
-            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:${{ steps.tags.outputs.current_major_minor_no_v }}
-            ghcr.io/${{ steps.owner.outputs.name }}/oauth2-middleware:latest
+            ghcr.io/${{ steps.owner.outputs.name }}/auth-middleware:${{ steps.tags.outputs.current }}
+            ghcr.io/${{ steps.owner.outputs.name }}/auth-middleware:${{ steps.tags.outputs.current_no_v }}
+            ghcr.io/${{ steps.owner.outputs.name }}/auth-middleware:${{ steps.tags.outputs.current_major_minor }}
+            ghcr.io/${{ steps.owner.outputs.name }}/auth-middleware:${{ steps.tags.outputs.current_major_minor_no_v }}
+            ghcr.io/${{ steps.owner.outputs.name }}/auth-middleware:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
