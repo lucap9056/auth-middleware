@@ -80,6 +80,7 @@ Stateless proxy 模式一定會回傳 provider token：預設放在 response bod
 - **Access token**：有效期短（`JWT_ACCESS_TOKEN_DURATION`），以 `Authorization: Bearer <token>` 傳送。Claim 包含 `user_email`、`device_id` 與 `username`。
 - **Refresh token**：從 `refresh_token` cookie 讀取，或從 JSON body `{ "refresh_token": "..." }` 讀取。Cookie 為 `HttpOnly`、`SameSite=Lax`，與 token 同時到期。
 - **Rotation**：每次 `/refresh` 都會簽發新的 refresh token 並讓舊的失效，持續使用中的 session 會不斷延長。同一個 token 同時呼叫多次 `/refresh` 會共用同一次 rotation（設定 Redis 時跨實例也成立）。
+- **重複使用偵測**：送出已被 rotate 過的舊 refresh token 會視為 token 外洩，並刪除該 device session。
 - **Username 更新**：登入與每次 refresh 時都會從 users table 讀取 `username`，改名最晚在一個 access token 有效期後反映。
 
 ## API

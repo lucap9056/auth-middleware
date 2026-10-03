@@ -80,6 +80,7 @@ With `OAUTH2_CLIENT_PKCE=true`, `/login` also returns a `verifier` field, and th
 - **Access token**: short-lived (`JWT_ACCESS_TOKEN_DURATION`). Send it as `Authorization: Bearer <token>`. Claims include `user_email`, `device_id`, and `username`.
 - **Refresh token**: read from the `refresh_token` cookie, or from a JSON body `{ "refresh_token": "..." }`. The cookie is `HttpOnly`, `SameSite=Lax`, and expires with the token.
 - **Rotation**: every `/refresh` issues a new refresh token and invalidates the previous one, so active sessions keep extending. Concurrent `/refresh` calls with the same token share one rotation (across instances when Redis is configured).
+- **Reuse detection**: presenting an already-rotated refresh token is treated as token theft and deletes the device session.
 - **Username updates**: `username` is read from the users table on login and on every refresh, so renames show up within one access token lifetime.
 
 ## API

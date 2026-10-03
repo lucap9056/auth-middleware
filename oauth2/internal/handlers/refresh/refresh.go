@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -35,14 +36,16 @@ func (e *rotateError) Unwrap() error {
 }
 
 type Handler struct {
+	db           options.DB
 	users        options.UsersDB
 	jwtManager   *jwt.JWTManager
 	flight       *flight.Group
 	secureCookie bool
 }
 
-func New(users options.UsersDB, jwtManager *jwt.JWTManager, flightGroup *flight.Group, secureCookie bool) *Handler {
+func New(db options.DB, users options.UsersDB, jwtManager *jwt.JWTManager, flightGroup *flight.Group, secureCookie bool) *Handler {
 	return &Handler{
+		db:           db,
 		users:        users,
 		jwtManager:   jwtManager,
 		flight:       flightGroup,
@@ -82,9 +85,19 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	response.NoStoreJSON(w, true, tokens, http.StatusOK)
 }
 
+func (h *Handler) deleteDeviceOnReuse(claims *jwt.RefreshClaims, err error) {
+	if !errors.Is(err, jwt.ErrTokenRevoked) {
+		return
+	}
+	if delErr := h.db.DeleteDevice(claims.Subject, claims.DeviceID); delErr != nil {
+		log.Printf("[WARN] Failed to delete device after refresh token reuse: %v", delErr)
+	}
+}
+
 func (h *Handler) rotate(refreshToken string) (response.TokenPair, error) {
 	claims, err := h.jwtManager.VerifyRefresh(refreshToken)
 	if err != nil {
+		h.deleteDeviceOnReuse(claims, err)
 		return response.TokenPair{}, &rotateError{"Invalid session or expired refresh token", http.StatusUnauthorized, err}
 	}
 
@@ -96,8 +109,9 @@ func (h *Handler) rotate(refreshToken string) (response.TokenPair, error) {
 		return response.TokenPair{}, &rotateError{"Failed to fetch username", http.StatusInternalServerError, err}
 	}
 
-	newRefreshToken, _, err := h.jwtManager.RotateRefresh(refreshToken)
+	newRefreshToken, rotatedClaims, err := h.jwtManager.RotateRefresh(refreshToken)
 	if errors.Is(err, jwt.ErrInvalidToken) {
+		h.deleteDeviceOnReuse(rotatedClaims, err)
 		return response.TokenPair{}, &rotateError{"Invalid session or expired refresh token", http.StatusUnauthorized, err}
 	}
 	if err != nil {
@@ -124,6 +138,7 @@ func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := h.jwtManager.VerifyRefresh(refreshToken)
 	if err != nil {
+		h.deleteDeviceOnReuse(claims, err)
 		response.SetAuthError(w, err)
 		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid session or expired refresh token", err)
 		return
