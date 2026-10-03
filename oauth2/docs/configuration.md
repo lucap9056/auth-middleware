@@ -46,6 +46,7 @@ Built-in providers: `discord`, `github`, `google`. Any other `OAUTH2_PROVIDER` v
 | `JWT_REFRESH_TOKEN_DURATION` | `7d` | Refresh token and cookie lifetime. A unit is required |
 | `JWT_ISSUER` | — | `iss` claim set on issued tokens and required on verification |
 | `JWT_AUDIENCE` | — | `aud` claim set on issued tokens and required on verification |
+| `IDENTITY_JWT_SECRET` | — | At least 32 bytes. When set, `/verify` returns a signed identity token instead of plain user headers (see [Identity Token](api.md#identity-token)) |
 
 ## Sign-in Policy
 
