@@ -86,6 +86,8 @@ func run(life *lifecycle.Coordinator) error {
 	jwtManager := jwt.NewJWTManager(jwtDB,
 		jwt.WithAccessTokenDuration(cfg.JWT.AccessTokenDuration),
 		jwt.WithRefreshTokenDuration(cfg.JWT.RefreshTokenDuration),
+		jwt.WithIssuer(cfg.JWT.Issuer),
+		jwt.WithAudience(cfg.JWT.Audience),
 	)
 
 	oauth2Client, err := newOAuth2Client(cfg)
