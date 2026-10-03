@@ -2,7 +2,12 @@ package usersdb
 
 import "github.com/lucap9056/auth-middleware/database/v2"
 
+type externalOptions struct {
+	userEmailReference string
+}
+
 type options struct {
+	external         *externalOptions
 	autoCreateSchema bool
 	databaseOptions  []database.Option
 }
@@ -26,5 +31,13 @@ func WithDatabaseOptions(opts ...database.Option) Option {
 func WithAutoCreateSchema(enabled bool) Option {
 	return func(o *options) {
 		o.autoCreateSchema = enabled
+	}
+}
+
+func WithExternal(userEmailReference string) Option {
+	return func(o *options) {
+		o.external = &externalOptions{
+			userEmailReference: userEmailReference,
+		}
 	}
 }

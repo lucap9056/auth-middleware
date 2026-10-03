@@ -7,9 +7,13 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/auth-middleware/database/v2/schema"
 )
 
-const managedSelectQuery = `SELECT username FROM users WHERE email = $1`
+const (
+	externalReference  = "auth.members(mail):citext"
+	managedSelectQuery = `SELECT username FROM users WHERE email = $1`
+)
 
 func newMock(t *testing.T) (sqlmock.Sqlmock, func(opts ...Option) (*Store, error)) {
 	t.Helper()
@@ -125,5 +129,50 @@ func TestCreateUser_ReturnsExistingUserOnConflict(t *testing.T) {
 	}
 	if user.Username != "Existing Name" {
 		t.Errorf("Username = %q; want existing user's name", user.Username)
+	}
+}
+
+func newExternalStore(t *testing.T) *Store {
+	t.Helper()
+	_, newStore := newMock(t)
+
+	store, err := newStore(WithExternal(externalReference))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return store
+}
+
+func TestNew_ExternalSkipsSchema(t *testing.T) {
+	store := newExternalStore(t)
+
+	if got, err := store.GetUsername("a@example.com"); err != nil || got != "" {
+		t.Fatalf("GetUsername = %q, %v; want empty, nil", got, err)
+	}
+}
+
+func TestNew_ExternalInvalidReference(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := New(db, WithExternal("members")); !errors.Is(err, schema.ErrInvalidUserEmailReference) {
+		t.Fatalf("err = %v; want ErrInvalidUserEmailReference", err)
+	}
+}
+
+func TestExternalStore_RejectsUserManagement(t *testing.T) {
+	store := newExternalStore(t)
+
+	if _, err := store.CreateUser("Alice", "a@example.com"); !errors.Is(err, ErrExternalUsers) {
+		t.Errorf("CreateUser err = %v; want ErrExternalUsers", err)
+	}
+	if _, err := store.GetUser("a@example.com"); !errors.Is(err, ErrExternalUsers) {
+		t.Errorf("GetUser err = %v; want ErrExternalUsers", err)
+	}
+	if err := store.DeleteUser("a@example.com"); !errors.Is(err, ErrExternalUsers) {
+		t.Errorf("DeleteUser err = %v; want ErrExternalUsers", err)
 	}
 }

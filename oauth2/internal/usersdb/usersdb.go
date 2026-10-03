@@ -40,9 +40,13 @@ func createSchema(db *sql.DB) error {
 	return tx.Commit()
 }
 
+var ErrExternalUsers = errors.New("users table is managed externally")
+
 type Store struct {
 	*database.Database
-	db *sql.DB
+	db                  *sql.DB
+	external            bool
+	selectUsernameQuery string
 }
 
 func New(db *sql.DB, opts ...Option) (*Store, error) {
@@ -54,6 +58,13 @@ func New(db *sql.DB, opts ...Option) (*Store, error) {
 	}
 
 	databaseOptions := append(cfg.databaseOptions, database.WithAutoCreateSchema(cfg.autoCreateSchema))
+	if cfg.external != nil {
+		userEmailReference, err := database.WithUserEmailReference(cfg.external.userEmailReference)
+		if err != nil {
+			return nil, err
+		}
+		databaseOptions = append(databaseOptions, userEmailReference)
+	}
 
 	store.Database, err = database.New(db, databaseOptions...)
 	if err != nil {
@@ -63,6 +74,10 @@ func New(db *sql.DB, opts ...Option) (*Store, error) {
 }
 
 func newStore(db *sql.DB, cfg *options) (*Store, error) {
+	if cfg.external != nil {
+		return &Store{db: db, external: true}, nil
+	}
+
 	if cfg.autoCreateSchema {
 		if err := createSchema(db); err != nil {
 			return nil, err
@@ -71,7 +86,7 @@ func newStore(db *sql.DB, cfg *options) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{db: db}, nil
+	return &Store{db: db, selectUsernameQuery: "SELECT username FROM users WHERE email = $1"}, nil
 }
 
 func probe(db *sql.DB, query string) error {
@@ -88,7 +103,14 @@ type User struct {
 	Email    string
 }
 
+func (s *Store) External() bool {
+	return s.external
+}
+
 func (s *Store) CreateUser(username, email string) (*User, error) {
+	if s.external {
+		return nil, ErrExternalUsers
+	}
 	var user User
 	err := s.db.QueryRow(
 		"INSERT INTO users (username, email) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING user_id, username, email",
@@ -101,6 +123,9 @@ func (s *Store) CreateUser(username, email string) (*User, error) {
 }
 
 func (s *Store) GetUser(email string) (*User, error) {
+	if s.external {
+		return nil, ErrExternalUsers
+	}
 	var user User
 	err := s.db.QueryRow(
 		"SELECT user_id, username, email FROM users WHERE email = $1",
@@ -113,8 +138,12 @@ func (s *Store) GetUser(email string) (*User, error) {
 }
 
 func (s *Store) GetUsername(email string) (string, error) {
+	if s.selectUsernameQuery == "" {
+		return "", nil
+	}
+
 	var username sql.NullString
-	err := s.db.QueryRow("SELECT username FROM users WHERE email = $1", email).Scan(&username)
+	err := s.db.QueryRow(s.selectUsernameQuery, email).Scan(&username)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", database.ErrUserNotFound
 	}
@@ -125,6 +154,9 @@ func (s *Store) GetUsername(email string) (string, error) {
 }
 
 func (s *Store) DeleteUser(email string) error {
+	if s.external {
+		return ErrExternalUsers
+	}
 	_, err := s.db.Exec(
 		"DELETE FROM users WHERE email = $1",
 		email,

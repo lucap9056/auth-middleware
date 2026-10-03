@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucap9056/auth-middleware/database/v2/schema"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/providers"
 )
 
@@ -21,6 +22,7 @@ const (
 	EnvDBConnMaxIdleTime    = "DB_CONN_MAX_IDLE_TIME"
 	EnvDBCleanupInterval    = "DB_CLEANUP_INTERVAL"
 	EnvDBAutoCreateSchema   = "DB_AUTO_CREATE_SCHEMA"
+	EnvDBUserEmailReference = "DB_USER_EMAIL_REFERENCE"
 	EnvJWTAccessDuration    = "JWT_ACCESS_TOKEN_DURATION"
 	EnvJWTRefreshDuration   = "JWT_REFRESH_TOKEN_DURATION"
 	EnvRedisURL             = "REDIS_URL"
@@ -77,13 +79,14 @@ func (h *HTTP) DevMode() bool {
 }
 
 type Database struct {
-	URL              string
-	MaxOpenConns     int
-	MaxIdleConns     int
-	ConnMaxLifetime  time.Duration
-	ConnMaxIdleTime  time.Duration
-	CleanupInterval  time.Duration
-	AutoCreateSchema bool
+	URL                string
+	MaxOpenConns       int
+	MaxIdleConns       int
+	ConnMaxLifetime    time.Duration
+	ConnMaxIdleTime    time.Duration
+	CleanupInterval    time.Duration
+	AutoCreateSchema   bool
+	UserEmailReference string
 }
 
 type JWT struct {
@@ -157,13 +160,19 @@ func loadDatabase(env *envReader) *Database {
 		return nil
 	}
 	db := &Database{
-		URL:              url,
-		MaxOpenConns:     env.integer(EnvDBMaxOpenConns, DefaultDBMaxOpenConns),
-		MaxIdleConns:     env.integer(EnvDBMaxIdleConns, DefaultDBMaxIdleConns),
-		ConnMaxLifetime:  env.duration(EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime, time.Minute),
-		ConnMaxIdleTime:  env.duration(EnvDBConnMaxIdleTime, DefaultDBConnMaxIdleTime, time.Minute),
-		CleanupInterval:  env.duration(EnvDBCleanupInterval, DefaultDBCleanupInterval, time.Hour),
-		AutoCreateSchema: isTrue(EnvDBAutoCreateSchema),
+		URL:                url,
+		MaxOpenConns:       env.integer(EnvDBMaxOpenConns, DefaultDBMaxOpenConns),
+		MaxIdleConns:       env.integer(EnvDBMaxIdleConns, DefaultDBMaxIdleConns),
+		ConnMaxLifetime:    env.duration(EnvDBConnMaxLifetime, DefaultDBConnMaxLifetime, time.Minute),
+		ConnMaxIdleTime:    env.duration(EnvDBConnMaxIdleTime, DefaultDBConnMaxIdleTime, time.Minute),
+		CleanupInterval:    env.duration(EnvDBCleanupInterval, DefaultDBCleanupInterval, time.Hour),
+		AutoCreateSchema:   isTrue(EnvDBAutoCreateSchema),
+		UserEmailReference: os.Getenv(EnvDBUserEmailReference),
+	}
+	if db.UserEmailReference != "" {
+		if _, err := schema.ParseUserEmailReference(db.UserEmailReference); err != nil {
+			env.fail(fmt.Errorf("%s: %w", EnvDBUserEmailReference, err))
+		}
 	}
 	return db
 }

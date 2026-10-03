@@ -586,6 +586,73 @@ func TestDeleteMe(t *testing.T) {
 	}
 }
 
+func TestCallback_ExternalUsers_RegistrationIgnored(t *testing.T) {
+	const email = "unknown@example.com"
+
+	stub := newOAuthStub("u1", email, "Unknown User")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.externalUsers = true
+	env := newTestEnv(stub, db, options.WithAllowRegistration(true))
+
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
+	w := env.do(req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d: %s", w.Code, w.Body.String())
+	}
+	if db.hasUser(email) {
+		t.Error("user must not be created when the users table is external")
+	}
+}
+
+func TestCallback_ExternalUsers_ExistingUser(t *testing.T) {
+	const email = "external@example.com"
+
+	stub := newOAuthStub("u1", email, "External User")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.externalUsers = true
+	db.seedUser(email)
+	env := newTestEnv(stub, db)
+
+	stateVal := loginState(t, env)
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil)
+	w := env.do(req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteMe_ExternalUsers_NotRegistered(t *testing.T) {
+	const email = "external-delete@example.com"
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.externalUsers = true
+	db.seedUser(email)
+	env := newTestEnv(stub, db)
+
+	_, access := env.issueTokens(email, "device")
+
+	req := httptest.NewRequest(http.MethodDelete, "/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+	w := env.do(req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if !db.hasUser(email) {
+		t.Error("user must not be deleted when the users table is external")
+	}
+}
+
 func accessUsername(t *testing.T, env *testEnv, accessToken string) string {
 	t.Helper()
 	claims, err := env.jwtManager.VerifyAccess(accessToken)

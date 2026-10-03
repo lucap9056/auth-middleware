@@ -78,12 +78,13 @@ func (s *oauthStub) handleRevoke(w http.ResponseWriter, _ *http.Request) {
 
 // mockDB implements options.DB and jwt.Database using in-memory maps.
 type mockDB struct {
-	mu          sync.Mutex
-	users       map[string]bool // email -> exists
-	usernames   map[string]string
-	devices     map[string]*mockDevice
-	idCounter   int
-	usernameErr error
+	mu            sync.Mutex
+	users         map[string]bool // email -> exists
+	usernames     map[string]string
+	devices       map[string]*mockDevice
+	idCounter     int
+	externalUsers bool
+	usernameErr   error
 }
 
 type mockDevice struct {
@@ -125,6 +126,10 @@ func (m *mockDB) deviceCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.devices)
+}
+
+func (m *mockDB) External() bool {
+	return m.externalUsers
 }
 
 func (m *mockDB) hasUser(email string) bool {

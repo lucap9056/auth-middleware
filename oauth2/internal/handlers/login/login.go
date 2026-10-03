@@ -252,7 +252,7 @@ func (h *Handler) handleExchange(code, state, device, headerVerifier string) (*E
 			}
 
 			username, err := h.users.GetUsername(user.Email)
-			if errors.Is(err, database.ErrUserNotFound) && h.options.AllowRegistration {
+			if errors.Is(err, database.ErrUserNotFound) && !h.users.External() && h.options.AllowRegistration {
 				createdUser, createErr := h.users.CreateUser(user.Name, user.Email)
 				if createErr != nil {
 					return &ExchangeResponse{
