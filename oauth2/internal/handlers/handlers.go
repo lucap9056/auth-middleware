@@ -30,7 +30,7 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("GET /health", health.Handle)
 
 	if deps.DB != nil {
-		refreshHandler := refresh.New(deps.UsersDB, deps.JWTManager, deps.Flight, !opts.DevMode)
+		refreshHandler := refresh.New(deps.DB, deps.UsersDB, deps.JWTManager, deps.Flight, !opts.DevMode)
 		mux.HandleFunc("POST /refresh", refreshHandler.Refresh)
 		mux.HandleFunc("POST /refresh-access", refreshHandler.RefreshAccess)
 

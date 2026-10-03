@@ -915,3 +915,34 @@ func TestAuthErrorHeader(t *testing.T) {
 		}
 	}
 }
+
+func TestRefresh_RevokedTokenDeletesDevice(t *testing.T) {
+	const email = "reuse@example.com"
+	const secret = "test-device-secret"
+
+	for _, path := range []string{"/refresh", "/refresh-access"} {
+		t.Run(path, func(t *testing.T) {
+			stub := newOAuthStub("", "", "")
+			defer stub.Close()
+
+			db := newMockDB()
+			db.seedUser(email)
+			env := newTestEnv(stub, db)
+
+			deviceID, _ := db.SaveDeviceSecret(email, "device", secret)
+			staleToken, _ := env.jwtManager.GenerateRefresh(email, deviceID, secret, 1)
+			db.UpdateDeviceSecret(deviceID)
+
+			w := refreshAt(env, path, staleToken)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("want 401, got %d: %s", w.Code, w.Body.String())
+			}
+			if got := w.Header().Get(response.AuthErrorHeader); got != "" {
+				t.Errorf("%s: want empty, got %q", response.AuthErrorHeader, got)
+			}
+			if _, exists := db.devices[deviceID]; exists {
+				t.Error("device must be deleted after a revoked refresh token is reused")
+			}
+		})
+	}
+}
