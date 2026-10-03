@@ -10,6 +10,7 @@ import (
 var allEnvKeys = []string{
 	EnvHTTPAddress, EnvHTTPMode, EnvDatabaseURL, EnvRedisURL,
 	EnvDBMaxOpenConns, EnvDBMaxIdleConns, EnvDBConnMaxLifetime, EnvDBConnMaxIdleTime, EnvDBCleanupInterval,
+	EnvDBAutoCreateSchema,
 	EnvJWTAccessDuration, EnvJWTRefreshDuration,
 	EnvOAuth2Provider, EnvOAuth2ClientID, EnvOAuth2ClientSecret, EnvOAuth2RedirectURL,
 	EnvOAuth2AuthURL, EnvOAuth2TokenURL, EnvOAuth2UserinfoURL, EnvOAuth2RevokeURL,
@@ -102,6 +103,7 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		EnvDBConnMaxLifetime:  "10",
 		EnvDBConnMaxIdleTime:  "90s",
 		EnvDBCleanupInterval:  "12",
+		EnvDBAutoCreateSchema: "true",
 		EnvJWTAccessDuration:  "30m",
 		EnvJWTRefreshDuration: "1d12h",
 	})
@@ -111,17 +113,21 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	expectedDatabase := Database{
-		URL:             "postgres://localhost/auth",
-		MaxOpenConns:    50,
-		MaxIdleConns:    0,
-		ConnMaxLifetime: 10 * time.Minute,
-		ConnMaxIdleTime: 90 * time.Second,
-		CleanupInterval: 12 * time.Hour,
+		URL:              "postgres://localhost/auth",
+		MaxOpenConns:     50,
+		MaxIdleConns:     0,
+		ConnMaxLifetime:  10 * time.Minute,
+		ConnMaxIdleTime:  90 * time.Second,
+		CleanupInterval:  12 * time.Hour,
+		AutoCreateSchema: true,
 	}
 	if cfg.Database == nil || *cfg.Database != expectedDatabase {
 		t.Errorf("Database: got %+v, want %+v", cfg.Database, expectedDatabase)
 	}
-	expectedJWT := JWT{AccessTokenDuration: 30 * time.Minute, RefreshTokenDuration: 36 * time.Hour}
+	expectedJWT := JWT{
+		AccessTokenDuration:  30 * time.Minute,
+		RefreshTokenDuration: 36 * time.Hour,
+	}
 	if *cfg.JWT != expectedJWT {
 		t.Errorf("JWT: got %+v, want %+v", cfg.JWT, expectedJWT)
 	}

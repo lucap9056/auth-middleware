@@ -12,9 +12,18 @@ const (
 	deletedSecretExtraTTL = time.Minute
 )
 
+type Secret struct {
+	Value      string
+	Generation int
+}
+
+func (s Secret) deleted() bool {
+	return s.Value == ""
+}
+
 type SecretCache interface {
-	GetSecret(deviceID string) (string, bool)
-	SetSecret(deviceID, secret string, overwrite bool)
+	GetSecret(deviceID string) (Secret, bool)
+	SetSecret(deviceID string, secret Secret)
 	DeleteSecret(deviceID string)
 	Close() error
 }

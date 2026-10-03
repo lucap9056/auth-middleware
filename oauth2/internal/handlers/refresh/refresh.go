@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lucap9056/auth-middleware/jwt"
+	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/auth-middleware/jwt/v2"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/flight"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/refreshtoken"
@@ -34,15 +35,15 @@ func (e *rotateError) Unwrap() error {
 }
 
 type Handler struct {
-	db           options.DB
+	users        options.UsersDB
 	jwtManager   *jwt.JWTManager
 	flight       *flight.Group
 	secureCookie bool
 }
 
-func New(db options.DB, jwtManager *jwt.JWTManager, flightGroup *flight.Group, secureCookie bool) *Handler {
+func New(users options.UsersDB, jwtManager *jwt.JWTManager, flightGroup *flight.Group, secureCookie bool) *Handler {
 	return &Handler{
-		db:           db,
+		users:        users,
 		jwtManager:   jwtManager,
 		flight:       flightGroup,
 		secureCookie: secureCookie,
@@ -86,19 +87,23 @@ func (h *Handler) rotate(refreshToken string) (response.TokenPair, error) {
 		return response.TokenPair{}, &rotateError{"Invalid session or expired refresh token", http.StatusUnauthorized, err}
 	}
 
-	userID := claims.Subject
-
-	user, err := h.db.GetUserFromID(userID)
-	if err != nil {
+	username, err := h.users.GetUsername(claims.Subject)
+	if errors.Is(err, database.ErrUserNotFound) {
 		return response.TokenPair{}, &rotateError{"User not found", http.StatusUnauthorized, err}
 	}
+	if err != nil {
+		return response.TokenPair{}, &rotateError{"Failed to fetch username", http.StatusInternalServerError, err}
+	}
 
-	newRefreshToken, err := h.jwtManager.GenerateRefresh(userID, claims.DeviceID)
+	newRefreshToken, _, err := h.jwtManager.RotateRefresh(refreshToken)
+	if errors.Is(err, jwt.ErrInvalidToken) {
+		return response.TokenPair{}, &rotateError{"Invalid session or expired refresh token", http.StatusUnauthorized, err}
+	}
 	if err != nil {
 		return response.TokenPair{}, &rotateError{"Failed to rotate refresh token", http.StatusInternalServerError, err}
 	}
 
-	accessToken, err := h.jwtManager.GenerateAccess(newRefreshToken, user.Username)
+	accessToken, err := h.jwtManager.GenerateAccess(newRefreshToken, username)
 	if err != nil {
 		return response.TokenPair{}, &rotateError{"Access token generation failed", http.StatusInternalServerError, err}
 	}
@@ -122,13 +127,21 @@ func (h *Handler) RefreshAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.db.GetUserFromID(claims.Subject)
-	if err != nil {
+	username, err := h.users.GetUsername(claims.Subject)
+	if errors.Is(err, database.ErrUserNotFound) {
 		response.Unauthorized(w, response.InvalidTokenChallenge, "User not found", err)
 		return
 	}
+	if err != nil {
+		response.JSON(w, false, "Failed to fetch username", http.StatusInternalServerError, err)
+		return
+	}
 
-	accessToken, err := h.jwtManager.GenerateAccess(refreshToken, user.Username)
+	accessToken, err := h.jwtManager.GenerateAccess(refreshToken, username)
+	if errors.Is(err, jwt.ErrInvalidToken) {
+		response.Unauthorized(w, response.InvalidTokenChallenge, "Invalid session or expired refresh token", err)
+		return
+	}
 	if err != nil {
 		response.JSON(w, false, "Refresh failed", http.StatusInternalServerError, err)
 		return

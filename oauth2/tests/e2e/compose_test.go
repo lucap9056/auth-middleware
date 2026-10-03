@@ -150,10 +150,10 @@ func TestFlow(t *testing.T) {
 		if resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("GET /verify: expected 204, got %d", resp.StatusCode)
 		}
-		userID := resp.Header.Get("X-Forwarded-User-ID")
-		if userID == "" {
-			t.Fatalf("GET /verify: missing X-Forwarded-User-ID header")
+		userEmail := resp.Header.Get("X-Forwarded-User-Email")
+		if userEmail == "" {
+			t.Fatalf("GET /verify: missing X-Forwarded-User-Email header")
 		}
-		t.Logf("GET /verify: %d  user-id=%s", resp.StatusCode, userID)
+		t.Logf("GET /verify: %d  user-email=%s", resp.StatusCode, userEmail)
 	}()
 }

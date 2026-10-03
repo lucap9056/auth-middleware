@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lucap9056/auth-middleware/database"
 	"github.com/lucap9056/auth-middleware/oauth2/internal/handlers/options"
 )
 
@@ -95,7 +95,6 @@ func loginState(t *testing.T, env *testEnv) string {
 // code exchange → userinfo fetch → DB lookup → JWT issuance → cookie set.
 func TestCallback_ExistingUser(t *testing.T) {
 	const (
-		userID   = "uid-existing"
 		email    = "existing@example.com"
 		username = "existinguser"
 	)
@@ -104,7 +103,7 @@ func TestCallback_ExistingUser(t *testing.T) {
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
 	stateVal := loginState(t, env)
@@ -186,9 +185,8 @@ func TestCallback_RegistrationEnabled(t *testing.T) {
 		t.Fatal("want success=true")
 	}
 
-	created, err := db.GetUserFromEmail(email)
-	if err != nil || created == nil {
-		t.Errorf("user should have been created in DB: err=%v user=%v", err, created)
+	if !db.hasUser(email) {
+		t.Error("user should have been created in DB")
 	}
 }
 
@@ -304,20 +302,16 @@ func TestCallback_NoDB_PassOAuthToken(t *testing.T) {
 }
 
 func TestRefresh_WithBody(t *testing.T) {
-	const (
-		userID   = "uid-1"
-		username = "user1"
-		email    = "user1@example.com"
-	)
+	const email = "user1@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	refresh, _ := env.issueTokens(userID, username, "device")
+	refresh, _ := env.issueTokens(email, "device")
 
 	body, _ := json.Marshal(map[string]string{"refresh_token": refresh})
 	req := httptest.NewRequest(http.MethodPost, "/refresh", bytes.NewReader(body))
@@ -351,20 +345,16 @@ func TestRefresh_WithBody(t *testing.T) {
 }
 
 func TestRefresh_WithCookie(t *testing.T) {
-	const (
-		userID   = "uid-2"
-		username = "user2"
-		email    = "user2@example.com"
-	)
+	const email = "user2@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	refresh, _ := env.issueTokens(userID, username, "device")
+	refresh, _ := env.issueTokens(email, "device")
 
 	req := httptest.NewRequest(http.MethodPost, "/refresh", nil)
 	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: refresh})
@@ -399,20 +389,16 @@ func refreshWithCookie(env *testEnv, refreshToken string) (int, string) {
 }
 
 func TestRefresh_ConcurrentSameTokenSharesRotation(t *testing.T) {
-	const (
-		userID   = "uid-concurrent"
-		username = "concurrent"
-		email    = "concurrent@example.com"
-	)
+	const email = "concurrent@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	refresh, _ := env.issueTokens(userID, username, "device")
+	refresh, _ := env.issueTokens(email, "device")
 
 	const n = 10
 	codes := make([]int, n)
@@ -460,20 +446,16 @@ func TestRefresh_InvalidToken(t *testing.T) {
 }
 
 func TestRefreshAccess(t *testing.T) {
-	const (
-		userID   = "uid-3"
-		username = "user3"
-		email    = "user3@example.com"
-	)
+	const email = "user3@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	refresh, _ := env.issueTokens(userID, username, "device")
+	refresh, _ := env.issueTokens(email, "device")
 
 	body, _ := json.Marshal(map[string]string{"refresh_token": refresh})
 	req := httptest.NewRequest(http.MethodPost, "/refresh-access", bytes.NewReader(body))
@@ -497,19 +479,16 @@ func TestRefreshAccess(t *testing.T) {
 }
 
 func TestVerify_Valid(t *testing.T) {
-	const (
-		userID   = "uid-4"
-		username = "user4"
-	)
+	const email = "user4@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: "user4@example.com"})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	_, access := env.issueTokens(userID, username, "device")
+	_, access := env.issueTokens(email, "device")
 
 	req := httptest.NewRequest(http.MethodGet, "/verify", nil)
 	req.Header.Set("Authorization", "Bearer "+access)
@@ -518,8 +497,8 @@ func TestVerify_Valid(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
 	}
-	if got := w.Header().Get("X-Forwarded-User-ID"); got != userID {
-		t.Errorf("X-Forwarded-User-ID: want %q, got %q", userID, got)
+	if got := w.Header().Get("X-Forwarded-User-Email"); got != email {
+		t.Errorf("X-Forwarded-User-Email: want %q, got %q", email, got)
 	}
 }
 
@@ -552,19 +531,16 @@ func TestVerify_InvalidToken(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
-	const (
-		userID   = "uid-5"
-		username = "user5"
-	)
+	const email = "user5@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: "user5@example.com"})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	refresh, _ := env.issueTokens(userID, username, "device")
+	refresh, _ := env.issueTokens(email, "device")
 
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: refresh})
@@ -586,20 +562,16 @@ func TestLogout(t *testing.T) {
 }
 
 func TestDeleteMe(t *testing.T) {
-	const (
-		userID   = "uid-6"
-		username = "user6"
-		email    = "user6@example.com"
-	)
+	const email = "user6@example.com"
 
 	stub := newOAuthStub("", "", "")
 	defer stub.Close()
 
 	db := newMockDB()
-	db.seedUser(&database.User{UserID: userID, Username: username, Email: email})
+	db.seedUser(email)
 	env := newTestEnv(stub, db)
 
-	_, access := env.issueTokens(userID, username, "device")
+	_, access := env.issueTokens(email, "device")
 
 	req := httptest.NewRequest(http.MethodDelete, "/users/me", nil)
 	req.Header.Set("Authorization", "Bearer "+access)
@@ -609,8 +581,209 @@ func TestDeleteMe(t *testing.T) {
 		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	deleted, err := db.GetUserFromEmail(email)
-	if err != nil || deleted != nil {
-		t.Errorf("user should have been deleted from DB: err=%v user=%v", err, deleted)
+	if db.hasUser(email) {
+		t.Error("user should have been deleted from DB")
+	}
+}
+
+func accessUsername(t *testing.T, env *testEnv, accessToken string) string {
+	t.Helper()
+	claims, err := env.jwtManager.VerifyAccess(accessToken)
+	if err != nil {
+		t.Fatalf("VerifyAccess: %v", err)
+	}
+	return claims.Username
+}
+
+func TestCallback_UsernameFromUsersTable(t *testing.T) {
+	const email = "named@example.com"
+
+	stub := newOAuthStub("u1", email, "Provider Name")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUsername(email, "Stored Name")
+	env := newTestEnv(stub, db)
+
+	stateVal := loginState(t, env)
+	w := env.do(httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Message struct {
+			AccessToken string `json:"access_token"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := accessUsername(t, env, resp.Message.AccessToken); got != "Stored Name" {
+		t.Errorf("username claim: want %q, got %q", "Stored Name", got)
+	}
+}
+
+func TestRefresh_UsernameFromUsersTable(t *testing.T) {
+	const email = "renamed@example.com"
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUsername(email, "Old Name")
+	env := newTestEnv(stub, db)
+
+	refresh, _ := env.issueTokens(email, "device")
+	db.seedUsername(email, "New Name")
+
+	req := httptest.NewRequest(http.MethodPost, "/refresh", nil)
+	req.AddCookie(&http.Cookie{Name: "refresh_token", Value: refresh})
+	w := env.do(req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Message struct {
+			AccessToken string `json:"access_token"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := accessUsername(t, env, resp.Message.AccessToken); got != "New Name" {
+		t.Errorf("username claim: want %q, got %q", "New Name", got)
+	}
+}
+
+func TestRefresh_UnknownUserKeepsSession(t *testing.T) {
+	const email = "vanished@example.com"
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUser(email)
+	env := newTestEnv(stub, db)
+
+	refresh, _ := env.issueTokens(email, "device")
+	db.mu.Lock()
+	delete(db.users, email)
+	db.mu.Unlock()
+
+	if code, _ := refreshWithCookie(env, refresh); code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", code)
+	}
+	if _, err := env.jwtManager.VerifyRefresh(refresh); err != nil {
+		t.Errorf("refresh token must not be rotated when the username lookup fails: %v", err)
+	}
+}
+
+func TestRefreshAccess_UsernameFromUsersTable(t *testing.T) {
+	const email = "access-name@example.com"
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUsername(email, "Access Name")
+	env := newTestEnv(stub, db)
+
+	refresh, _ := env.issueTokens(email, "device")
+
+	body, _ := json.Marshal(map[string]string{"refresh_token": refresh})
+	req := httptest.NewRequest(http.MethodPost, "/refresh-access", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := env.do(req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := accessUsername(t, env, resp.Message); got != "Access Name" {
+		t.Errorf("username claim: want %q, got %q", "Access Name", got)
+	}
+}
+
+func TestVerify_ForwardsUsername(t *testing.T) {
+	const email = "verify-name@example.com"
+
+	stub := newOAuthStub("", "", "")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUser(email)
+	env := newTestEnv(stub, db)
+
+	refresh, _ := env.issueTokens(email, "device")
+	access, err := env.jwtManager.GenerateAccess(refresh, "Verify Name")
+	if err != nil {
+		t.Fatalf("GenerateAccess: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/verify", nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+	w := env.do(req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("X-Forwarded-Username"); got != "Verify Name" {
+		t.Errorf("X-Forwarded-Username: want %q, got %q", "Verify Name", got)
+	}
+}
+
+func TestCallback_UsernameLookupFailureCreatesNoDevice(t *testing.T) {
+	const email = "lookup-fail@example.com"
+
+	stub := newOAuthStub("u1", email, "Lookup Fail")
+	defer stub.Close()
+
+	db := newMockDB()
+	db.seedUser(email)
+	db.usernameErr = errors.New("connection reset")
+	env := newTestEnv(stub, db)
+
+	stateVal := loginState(t, env)
+	w := env.do(httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil))
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("want 500, got %d: %s", w.Code, w.Body.String())
+	}
+	if n := db.deviceCount(); n != 0 {
+		t.Errorf("no device session should be created, got %d", n)
+	}
+}
+
+func TestCallback_RegistrationUsesProviderName(t *testing.T) {
+	const email = "register-name@example.com"
+
+	stub := newOAuthStub("u1", email, "Provider Name")
+	defer stub.Close()
+
+	db := newMockDB()
+	env := newTestEnv(stub, db, options.WithAllowRegistration(true))
+
+	stateVal := loginState(t, env)
+	w := env.do(httptest.NewRequest(http.MethodGet, "/callback?code=testcode&state="+stateVal, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Message struct {
+			AccessToken string `json:"access_token"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := accessUsername(t, env, resp.Message.AccessToken); got != "Provider Name" {
+		t.Errorf("username claim: want %q, got %q", "Provider Name", got)
 	}
 }

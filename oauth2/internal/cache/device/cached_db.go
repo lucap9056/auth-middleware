@@ -1,7 +1,7 @@
 package device
 
 import (
-	"github.com/lucap9056/auth-middleware/database"
+	"github.com/lucap9056/auth-middleware/database/v2"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -15,52 +15,56 @@ func NewCachedDB(db *database.Database, cache SecretCache) *CachedDB {
 	return &CachedDB{Database: db, cache: cache}
 }
 
-func (c *CachedDB) GetDeviceSecret(deviceID string) (string, error) {
+func (c *CachedDB) GetDeviceSecret(deviceID string) (string, int, error) {
 	if secret, ok := c.cache.GetSecret(deviceID); ok {
-		return secret, nil
+		return secret.Value, secret.Generation, nil
 	}
 
 	v, err, _ := c.secretLoads.Do(deviceID, func() (any, error) {
-		secret, err := c.Database.GetDeviceSecret(deviceID)
+		value, generation, err := c.Database.GetDeviceSecret(deviceID)
 		if err != nil {
-			return "", err
+			return Secret{}, err
 		}
-		c.cache.SetSecret(deviceID, secret, false)
+		secret := Secret{Value: value, Generation: generation}
+		c.cache.SetSecret(deviceID, secret)
 		return secret, nil
 	})
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	return v.(string), nil
+	secret := v.(Secret)
+	return secret.Value, secret.Generation, nil
 }
 
-func (c *CachedDB) UpdateDeviceSecret(deviceID, secret string) error {
-	if err := c.Database.UpdateDeviceSecret(deviceID, secret); err != nil {
-		return err
-	}
-	c.cache.SetSecret(deviceID, secret, true)
-	return nil
-}
-
-func (c *CachedDB) SaveDeviceSecret(userID, deviceName, secret string) (string, error) {
-	deviceID, err := c.Database.SaveDeviceSecret(userID, deviceName, secret)
+func (c *CachedDB) UpdateDeviceSecret(deviceID string) (int, error) {
+	generation, err := c.Database.UpdateDeviceSecret(deviceID)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
-	c.cache.SetSecret(deviceID, secret, true)
-	return deviceID, nil
+
+	secret, ok := c.cache.GetSecret(deviceID)
+	if !ok {
+		value, current, err := c.Database.GetDeviceSecret(deviceID)
+		if err != nil {
+			return generation, nil
+		}
+		secret = Secret{Value: value, Generation: current}
+	}
+	secret.Generation = max(secret.Generation, generation)
+	c.cache.SetSecret(deviceID, secret)
+	return generation, nil
 }
 
-func (c *CachedDB) DeleteDevice(userID, deviceID string) error {
-	if err := c.Database.DeleteDevice(userID, deviceID); err != nil {
+func (c *CachedDB) DeleteDevice(userEmail, deviceID string) error {
+	if err := c.Database.DeleteDevice(userEmail, deviceID); err != nil {
 		return err
 	}
 	c.cache.DeleteSecret(deviceID)
 	return nil
 }
 
-func (c *CachedDB) DeleteAllDevices(userID string) error {
-	ids, err := c.Database.DeleteAllDevicesReturningIDs(userID)
+func (c *CachedDB) DeleteAllDevices(userEmail string) error {
+	ids, err := c.Database.DeleteAllDevicesReturningIDs(userEmail)
 	if err != nil {
 		return err
 	}

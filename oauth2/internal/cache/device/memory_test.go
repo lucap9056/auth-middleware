@@ -18,11 +18,11 @@ func newTestMemoryCache(t *testing.T, ttl time.Duration) *memorySecretCache {
 
 func TestMemorySecretCache_SetGet(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "s1", true)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 1})
 
 	got, ok := c.GetSecret("d1")
-	if !ok || got != "s1" {
-		t.Fatalf("GetSecret = %q, %v; want s1, true", got, ok)
+	if !ok || got != (Secret{Value: "s1", Generation: 1}) {
+		t.Fatalf("GetSecret = %+v, %v; want {s1 1}, true", got, ok)
 	}
 	if _, ok := c.GetSecret("missing"); ok {
 		t.Fatal("GetSecret(missing) should miss")
@@ -31,7 +31,7 @@ func TestMemorySecretCache_SetGet(t *testing.T) {
 
 func TestMemorySecretCache_Expires(t *testing.T) {
 	c := newTestMemoryCache(t, 50*time.Millisecond)
-	c.SetSecret("d1", "s1", true)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 1})
 	time.Sleep(100 * time.Millisecond)
 
 	if _, ok := c.GetSecret("d1"); ok {
@@ -41,8 +41,8 @@ func TestMemorySecretCache_Expires(t *testing.T) {
 
 func TestMemorySecretCache_Delete(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "s1", true)
-	c.SetSecret("d2", "s2", true)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 1})
+	c.SetSecret("d2", Secret{Value: "s2", Generation: 1})
 
 	c.DeleteSecret("d1")
 	if _, ok := c.GetSecret("d1"); ok {
@@ -59,32 +59,33 @@ func TestNewMemorySecretCache_InvalidSize(t *testing.T) {
 	}
 }
 
-func TestMemorySecretCache_WithoutOverwriteKeepsNewerSecret(t *testing.T) {
+func TestMemorySecretCache_NewerGenerationReplaces(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "rotated", true)
-	c.SetSecret("d1", "stale", false)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 1})
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 2})
 
-	if got, _ := c.GetSecret("d1"); got != "rotated" {
-		t.Fatalf("GetSecret = %q; want rotated", got)
+	if got, _ := c.GetSecret("d1"); got.Generation != 2 {
+		t.Fatalf("Generation = %d; want 2", got.Generation)
 	}
 }
 
-func TestMemorySecretCache_WithoutOverwriteCannotRestoreDeleted(t *testing.T) {
+func TestMemorySecretCache_StaleGenerationIgnored(t *testing.T) {
 	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "s1", true)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 3})
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 2})
+
+	if got, _ := c.GetSecret("d1"); got.Generation != 3 {
+		t.Fatalf("Generation = %d; want 3", got.Generation)
+	}
+}
+
+func TestMemorySecretCache_CannotRestoreDeleted(t *testing.T) {
+	c := newTestMemoryCache(t, time.Minute)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 1})
 	c.DeleteSecret("d1")
-	c.SetSecret("d1", "s1", false)
+	c.SetSecret("d1", Secret{Value: "s1", Generation: 2})
 
 	if _, ok := c.GetSecret("d1"); ok {
-		t.Fatal("deleted secret must not be restored by a stale fill")
-	}
-}
-
-func TestMemorySecretCache_WithoutOverwriteFillsMiss(t *testing.T) {
-	c := newTestMemoryCache(t, time.Minute)
-	c.SetSecret("d1", "s1", false)
-
-	if got, ok := c.GetSecret("d1"); !ok || got != "s1" {
-		t.Fatalf("GetSecret = %q, %v; want s1, true", got, ok)
+		t.Fatal("deleted secret must not be restored")
 	}
 }

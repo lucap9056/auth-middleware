@@ -29,38 +29,50 @@ func uniqueDeviceID(t *testing.T) string {
 	return t.Name() + ":" + time.Now().Format(time.RFC3339Nano)
 }
 
-func TestRedisSecretCache_WithoutOverwriteKeepsNewerSecret(t *testing.T) {
+func TestRedisSecretCache_SetGet(t *testing.T) {
 	c := newTestRedisCache(t)
 	deviceID := uniqueDeviceID(t)
 
-	c.SetSecret(deviceID, "rotated", true)
-	c.SetSecret(deviceID, "stale", false)
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 1})
 
-	if got, _ := c.GetSecret(deviceID); got != "rotated" {
-		t.Fatalf("GetSecret = %q; want rotated", got)
+	if got, ok := c.GetSecret(deviceID); !ok || got != (Secret{Value: "s1", Generation: 1}) {
+		t.Fatalf("GetSecret = %+v, %v; want {s1 1}, true", got, ok)
 	}
 }
 
-func TestRedisSecretCache_WithoutOverwriteCannotRestoreDeleted(t *testing.T) {
+func TestRedisSecretCache_NewerGenerationReplaces(t *testing.T) {
 	c := newTestRedisCache(t)
 	deviceID := uniqueDeviceID(t)
 
-	c.SetSecret(deviceID, "s1", true)
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 1})
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 2})
+
+	if got, _ := c.GetSecret(deviceID); got.Generation != 2 {
+		t.Fatalf("Generation = %d; want 2", got.Generation)
+	}
+}
+
+func TestRedisSecretCache_StaleGenerationIgnored(t *testing.T) {
+	c := newTestRedisCache(t)
+	deviceID := uniqueDeviceID(t)
+
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 3})
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 2})
+
+	if got, _ := c.GetSecret(deviceID); got.Generation != 3 {
+		t.Fatalf("Generation = %d; want 3", got.Generation)
+	}
+}
+
+func TestRedisSecretCache_CannotRestoreDeleted(t *testing.T) {
+	c := newTestRedisCache(t)
+	deviceID := uniqueDeviceID(t)
+
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 1})
 	c.DeleteSecret(deviceID)
-	c.SetSecret(deviceID, "s1", false)
+	c.SetSecret(deviceID, Secret{Value: "s1", Generation: 2})
 
 	if _, ok := c.GetSecret(deviceID); ok {
-		t.Fatal("deleted secret must not be restored by a stale fill")
-	}
-}
-
-func TestRedisSecretCache_WithoutOverwriteFillsMiss(t *testing.T) {
-	c := newTestRedisCache(t)
-	deviceID := uniqueDeviceID(t)
-
-	c.SetSecret(deviceID, "s1", false)
-
-	if got, ok := c.GetSecret(deviceID); !ok || got != "s1" {
-		t.Fatalf("GetSecret = %q, %v; want s1, true", got, ok)
+		t.Fatal("deleted secret must not be restored")
 	}
 }

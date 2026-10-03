@@ -8,12 +8,12 @@ import (
 )
 
 type memorySecretCache struct {
-	secrets *otter.Cache[string, string]
+	secrets *otter.Cache[string, Secret]
 }
 
 func newMemorySecretCache(maximumSize int, ttl time.Duration) (*memorySecretCache, error) {
-	secrets, err := cache.NewMemoryCache[string](maximumSize, func(secret string) time.Duration {
-		if secret == "" {
+	secrets, err := cache.NewMemoryCache[string](maximumSize, func(secret Secret) time.Duration {
+		if secret.deleted() {
 			return ttl + deletedSecretExtraTTL
 		}
 		return ttl
@@ -24,24 +24,25 @@ func newMemorySecretCache(maximumSize int, ttl time.Duration) (*memorySecretCach
 	return &memorySecretCache{secrets: secrets}, nil
 }
 
-func (m *memorySecretCache) GetSecret(deviceID string) (string, bool) {
+func (m *memorySecretCache) GetSecret(deviceID string) (Secret, bool) {
 	secret, found := m.secrets.GetIfPresent(deviceID)
-	if !found || secret == "" {
-		return "", false
+	if !found || secret.deleted() {
+		return Secret{}, false
 	}
 	return secret, true
 }
 
-func (m *memorySecretCache) SetSecret(deviceID, secret string, overwrite bool) {
-	if overwrite {
-		m.secrets.Set(deviceID, secret)
-		return
-	}
-	m.secrets.SetIfAbsent(deviceID, secret)
+func (m *memorySecretCache) SetSecret(deviceID string, secret Secret) {
+	m.secrets.Compute(deviceID, func(current Secret, found bool) (Secret, otter.ComputeOp) {
+		if found && (current.deleted() || current.Generation >= secret.Generation) {
+			return current, otter.CancelOp
+		}
+		return secret, otter.WriteOp
+	})
 }
 
 func (m *memorySecretCache) DeleteSecret(deviceID string) {
-	m.secrets.Set(deviceID, "")
+	m.secrets.Set(deviceID, Secret{})
 }
 
 func (m *memorySecretCache) Close() error {

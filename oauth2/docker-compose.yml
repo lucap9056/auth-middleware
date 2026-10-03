@@ -8,7 +8,6 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U auth -d auth"]
@@ -54,6 +53,7 @@ services:
       OAUTH2_CLIENT_SECRET: "oauth2-middleware-secret"
       OAUTH2_REDIRECT_URL: "http://localhost:8080/callback"
       OAUTH2_SCOPES: "openid,profile,email"
+      DB_AUTO_CREATE_SCHEMA: "true"
       HTTP_MODE: "development"
       ALLOW_REGISTRATION: "true"
     depends_on:
