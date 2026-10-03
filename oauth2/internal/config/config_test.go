@@ -5,12 +5,14 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/lucap9056/auth-middleware/database/v2/schema"
 )
 
 var allEnvKeys = []string{
 	EnvHTTPAddress, EnvHTTPMode, EnvDatabaseURL, EnvRedisURL,
 	EnvDBMaxOpenConns, EnvDBMaxIdleConns, EnvDBConnMaxLifetime, EnvDBConnMaxIdleTime, EnvDBCleanupInterval,
-	EnvDBAutoCreateSchema,
+	EnvDBAutoCreateSchema, EnvDBUserEmailReference,
 	EnvJWTAccessDuration, EnvJWTRefreshDuration,
 	EnvOAuth2Provider, EnvOAuth2ClientID, EnvOAuth2ClientSecret, EnvOAuth2RedirectURL,
 	EnvOAuth2AuthURL, EnvOAuth2TokenURL, EnvOAuth2UserinfoURL, EnvOAuth2RevokeURL,
@@ -97,15 +99,16 @@ func TestLoad_DatabaseSettingsIgnoredWithoutURL(t *testing.T) {
 
 func TestLoad_DatabaseAndJWT(t *testing.T) {
 	setEnv(t, map[string]string{
-		EnvDatabaseURL:        "postgres://localhost/auth",
-		EnvDBMaxOpenConns:     "50",
-		EnvDBMaxIdleConns:     "0",
-		EnvDBConnMaxLifetime:  "10",
-		EnvDBConnMaxIdleTime:  "90s",
-		EnvDBCleanupInterval:  "12",
-		EnvDBAutoCreateSchema: "true",
-		EnvJWTAccessDuration:  "30m",
-		EnvJWTRefreshDuration: "1d12h",
+		EnvDatabaseURL:          "postgres://localhost/auth",
+		EnvDBMaxOpenConns:       "50",
+		EnvDBMaxIdleConns:       "0",
+		EnvDBConnMaxLifetime:    "10",
+		EnvDBConnMaxIdleTime:    "90s",
+		EnvDBCleanupInterval:    "12",
+		EnvDBAutoCreateSchema:   "true",
+		EnvDBUserEmailReference: "auth.members(mail):citext",
+		EnvJWTAccessDuration:    "30m",
+		EnvJWTRefreshDuration:   "1d12h",
 	})
 
 	cfg, err := Load()
@@ -113,13 +116,14 @@ func TestLoad_DatabaseAndJWT(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	expectedDatabase := Database{
-		URL:              "postgres://localhost/auth",
-		MaxOpenConns:     50,
-		MaxIdleConns:     0,
-		ConnMaxLifetime:  10 * time.Minute,
-		ConnMaxIdleTime:  90 * time.Second,
-		CleanupInterval:  12 * time.Hour,
-		AutoCreateSchema: true,
+		URL:                "postgres://localhost/auth",
+		MaxOpenConns:       50,
+		MaxIdleConns:       0,
+		ConnMaxLifetime:    10 * time.Minute,
+		ConnMaxIdleTime:    90 * time.Second,
+		CleanupInterval:    12 * time.Hour,
+		AutoCreateSchema:   true,
+		UserEmailReference: "auth.members(mail):citext",
 	}
 	if cfg.Database == nil || *cfg.Database != expectedDatabase {
 		t.Errorf("Database: got %+v, want %+v", cfg.Database, expectedDatabase)
@@ -240,6 +244,11 @@ func TestLoad_Validation(t *testing.T) {
 			name:        "invalid duration",
 			env:         map[string]string{EnvDatabaseURL: "postgres://localhost/auth", EnvDBConnMaxLifetime: "5 minutes"},
 			expectedErr: ErrInvalidDuration,
+		},
+		{
+			name:        "invalid user email reference",
+			env:         map[string]string{EnvDatabaseURL: "postgres://localhost/auth", EnvDBUserEmailReference: "users"},
+			expectedErr: schema.ErrInvalidUserEmailReference,
 		},
 		{
 			name:        "jwt duration without unit",

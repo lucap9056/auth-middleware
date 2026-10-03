@@ -12,6 +12,7 @@ type UsersDB interface {
 	CreateUser(username, email string) (*usersdb.User, error)
 	GetUsername(email string) (string, error)
 	DeleteUser(email string) error
+	External() bool
 }
 
 type Options struct {

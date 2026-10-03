@@ -50,6 +50,12 @@ func run(life *lifecycle.Coordinator) error {
 		}
 	}
 
+	allowRegistration := cfg.Auth.AllowRegistration
+	if allowRegistration && store != nil && store.External() {
+		log.Printf("[WARN] %s is ignored because %s is set", config.EnvAllowRegistration, config.EnvDBUserEmailReference)
+		allowRegistration = false
+	}
+
 	var redisClient *cache.RedisClient
 	var flightOptions []flight.Option
 	if cfg.Redis != nil {
@@ -100,7 +106,7 @@ func run(life *lifecycle.Coordinator) error {
 
 	authOptions := []options.Option{
 		options.WithDevMode(cfg.HTTP.DevMode()),
-		options.WithAllowRegistration(cfg.Auth.AllowRegistration),
+		options.WithAllowRegistration(allowRegistration),
 		options.WithPassOAuthToken(cfg.Auth.PassOAuthToken),
 		options.WithClientPKCE(cfg.OAuth2 != nil && cfg.OAuth2.Client.PKCE),
 	}
@@ -159,6 +165,9 @@ func openDatabase(life *lifecycle.Coordinator, cfg *config.Database) (*usersdb.S
 	usersOptions := []usersdb.Option{
 		usersdb.WithAutoCreateSchema(cfg.AutoCreateSchema),
 		usersdb.WithDatabaseOptions(database.WithCleanupInterval(cfg.CleanupInterval)),
+	}
+	if cfg.UserEmailReference != "" {
+		usersOptions = append(usersOptions, usersdb.WithExternal(cfg.UserEmailReference))
 	}
 
 	store, err := usersdb.New(sqlDB, usersOptions...)
