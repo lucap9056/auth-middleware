@@ -1,22 +1,24 @@
 # Database Module
 
-This module stores device sessions for the `auth-middleware` project in PostgreSQL. User accounts are owned by your application; this module only references them by email.
+Stores `corvauth` device sessions in PostgreSQL
+
+Your application owns user accounts; this module only references them by email
 
 ## Requirements
 
 - **PostgreSQL 14+**
-- **An existing users table** whose email column is a `PRIMARY KEY` or has a `UNIQUE` constraint, so a foreign key can reference it
+- **An existing users table**: email column must be `PRIMARY KEY` or `UNIQUE` for the foreign key
 
 ## Installation
 
 ```bash
-go get github.com/lucap9056/auth-middleware/database/v2
+go get github.com/lucap9056/corvauth/database
 ```
 
 ## Usage
 
 ```go
-import "github.com/lucap9056/auth-middleware/database/v2"
+import "github.com/lucap9056/corvauth/database"
 
 userRef, err := database.WithUserEmailReference("users(email)")
 if err != nil {
@@ -35,7 +37,7 @@ defer db.Close()
 
 ### Using an Existing Connection Pool
 
-If your application already has a `*sql.DB` connected to the same PostgreSQL, use `New` instead:
+If you already have a `*sql.DB` to the same PostgreSQL, use `New`:
 
 ```go
 sqlDB, err := sql.Open("pgx", dsn)
@@ -52,20 +54,20 @@ defer db.Close()
 ```
 
 - The `*sql.DB` must use the pgx stdlib driver
-- The caller owns the `*sql.DB`: `Close()` only stops the cleanup worker
-- Connection pool options (`WithMaxOpenConns`, `WithMaxIdleConns`, `WithConnMaxLifetime`, `WithConnMaxIdleTime`) are ignored
+- The caller owns the `*sql.DB`; `Close()` only stops the cleanup worker
+- Pool options (`WithMaxOpenConns`, `WithMaxIdleConns`, `WithConnMaxLifetime`, `WithConnMaxIdleTime`) are ignored
 
 ## Options
 
 | Option | Default | Description |
 |---|---|---|
-| `WithMaxOpenConns(n)` | `20` | Maximum number of open connections (`NewDatabase` only) |
-| `WithMaxIdleConns(n)` | `15` | Maximum number of idle connections (`NewDatabase` only) |
-| `WithConnMaxLifetime(d)` | `5m` | Maximum lifetime of a connection (`NewDatabase` only) |
-| `WithConnMaxIdleTime(d)` | `2m` | Maximum idle time of a connection (`NewDatabase` only) |
-| `WithCleanupInterval(d)` | `24h` | Interval for deleting devices not updated in the last 7 days; `0` disables cleanup |
-| `WithAutoCreateSchema(bool)` | `false` | Create the `auth_user_devices` table and its indexes on startup |
-| `WithUserEmailReference(ref)` | `users(email)` | Users table and email column referenced by the foreign key |
+| `WithMaxOpenConns(n)` | `20` | Max open connections (`NewDatabase` only) |
+| `WithMaxIdleConns(n)` | `15` | Max idle connections (`NewDatabase` only) |
+| `WithConnMaxLifetime(d)` | `5m` | Max connection lifetime (`NewDatabase` only) |
+| `WithConnMaxIdleTime(d)` | `2m` | Max connection idle time (`NewDatabase` only) |
+| `WithCleanupInterval(d)` | `24h` | Interval for deleting devices not updated in 7 days; `0` disables |
+| `WithAutoCreateSchema(bool)` | `false` | Create `auth_user_devices` and its indexes on startup |
+| `WithUserEmailReference(ref)` | `users(email)` | Users table and email column for the foreign key |
 
 ### User Email Reference
 
@@ -77,11 +79,13 @@ Format: `[<schema>.]<table>(<column>)[:<type>]`
 | `users(email):citext` | `users.email`, type `citext` |
 | `auth.members(mail):varchar(255)` | `auth.members.mail`, type `varchar(255)` |
 
-The reference is case-insensitive and normalized to lowercase. `<type>` must match the type of the referenced column.
+- Case-insensitive, normalized to lowercase
+- `<type>` must match the referenced column's type
 
 ### Auto Create Schema
 
-When enabled, `NewDatabase` and `New` create the schema, which requires DDL privileges. When disabled, create the schema yourself using `schema.Generate`, or with the SQL below.
+- Enabled: `NewDatabase` and `New` create the schema; requires DDL privileges
+- Disabled: create it yourself with `schema.Generate` or the SQL below
 
 ## Schema
 
@@ -106,10 +110,10 @@ CREATE INDEX IF NOT EXISTS idx_auth_user_devices_updated_at ON auth_user_devices
 
 | Method | Description |
 |---|---|
-| `SaveDeviceSecret(userEmail, deviceName, secret)` | Creates a device and returns its `device_id`. Returns `ErrUserNotFound` if the email does not exist in the users table |
-| `GetDeviceSecret(deviceID)` | Returns the device's `secret` and current `generation` |
-| `UpdateDeviceSecret(deviceID)` | Increments the device's `generation`, refreshes `updated_at`, and returns the new `generation` |
-| `DeleteDevice(userEmail, deviceID)` | Deletes one device belonging to the user |
-| `DeleteAllDevices(userEmail)` | Deletes all devices of the user |
-| `DeleteAllDevicesReturningIDs(userEmail)` | Deletes all devices of the user and returns their IDs |
-| `Close()` | Stops the cleanup worker. Closes the connection pool only when it was opened by `NewDatabase` |
+| `SaveDeviceSecret(userEmail, deviceName, secret)` | Creates a device and returns its `device_id`; `ErrUserNotFound` if the email is not in the users table |
+| `GetDeviceSecret(deviceID)` | Returns `secret` and current `generation` |
+| `UpdateDeviceSecret(deviceID)` | Increments `generation`, refreshes `updated_at`, returns the new `generation` |
+| `DeleteDevice(userEmail, deviceID)` | Deletes one of the user's devices |
+| `DeleteAllDevices(userEmail)` | Deletes all of the user's devices |
+| `DeleteAllDevicesReturningIDs(userEmail)` | Deletes all of the user's devices and returns their IDs |
+| `Close()` | Stops the cleanup worker; closes the pool only if `NewDatabase` opened it |

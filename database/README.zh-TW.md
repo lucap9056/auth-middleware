@@ -1,22 +1,24 @@
 # Database Module
 
-此 module 負責將 `auth-middleware` 的 device session 存放於 PostgreSQL。使用者帳號由你的應用程式管理，此 module 只透過 email 參考 users table。
+將 `corvauth` 的 device session 存放於 PostgreSQL
+
+使用者帳號由你的應用程式管理，此 module 只以 email 參照 users table
 
 ## 需求
 
 - **PostgreSQL 14+**
-- **既有的 users table**：email column 必須是 `PRIMARY KEY` 或有 `UNIQUE` constraint，才能被 foreign key 參考
+- **既有的 users table**：email column 須為 `PRIMARY KEY` 或 `UNIQUE`，供 foreign key 參照
 
 ## 安裝
 
 ```bash
-go get github.com/lucap9056/auth-middleware/database/v2
+go get github.com/lucap9056/corvauth/database
 ```
 
 ## 使用方式
 
 ```go
-import "github.com/lucap9056/auth-middleware/database/v2"
+import "github.com/lucap9056/corvauth/database"
 
 userRef, err := database.WithUserEmailReference("users(email)")
 if err != nil {
@@ -35,7 +37,7 @@ defer db.Close()
 
 ### 使用既有的 Connection Pool
 
-若應用程式已經有連到同一個 PostgreSQL 的 `*sql.DB`，可改用 `New`：
+已有連到同一個 PostgreSQL 的 `*sql.DB` 時改用 `New`：
 
 ```go
 sqlDB, err := sql.Open("pgx", dsn)
@@ -51,9 +53,9 @@ if err != nil {
 defer db.Close()
 ```
 
-- `*sql.DB` 必須使用 pgx stdlib driver
-- `*sql.DB` 由呼叫端擁有：`Close()` 只會停止 cleanup worker
-- Connection pool 相關 option（`WithMaxOpenConns`、`WithMaxIdleConns`、`WithConnMaxLifetime`、`WithConnMaxIdleTime`）將被忽略
+- `*sql.DB` 須使用 pgx stdlib driver
+- `*sql.DB` 由呼叫端擁有，`Close()` 只停止 cleanup worker
+- Connection pool option（`WithMaxOpenConns`、`WithMaxIdleConns`、`WithConnMaxLifetime`、`WithConnMaxIdleTime`）會被忽略
 
 ## Options
 
@@ -61,11 +63,11 @@ defer db.Close()
 |---|---|---|
 | `WithMaxOpenConns(n)` | `20` | 最大連線數（僅 `NewDatabase`） |
 | `WithMaxIdleConns(n)` | `15` | 最大閒置連線數（僅 `NewDatabase`） |
-| `WithConnMaxLifetime(d)` | `5m` | 單一連線最長存活時間（僅 `NewDatabase`） |
-| `WithConnMaxIdleTime(d)` | `2m` | 單一連線最長閒置時間（僅 `NewDatabase`） |
-| `WithCleanupInterval(d)` | `24h` | 清除 7 天內未更新 device 的間隔；設為 `0` 則停用 |
-| `WithAutoCreateSchema(bool)` | `false` | 啟動時自動建立 `auth_user_devices` table 與 index |
-| `WithUserEmailReference(ref)` | `users(email)` | foreign key 參考的 users table 與 email column |
+| `WithConnMaxLifetime(d)` | `5m` | 連線最長存活時間（僅 `NewDatabase`） |
+| `WithConnMaxIdleTime(d)` | `2m` | 連線最長閒置時間（僅 `NewDatabase`） |
+| `WithCleanupInterval(d)` | `24h` | 清除 7 天未更新 device 的間隔，`0` 停用 |
+| `WithAutoCreateSchema(bool)` | `false` | 啟動時建立 `auth_user_devices` table 與 index |
+| `WithUserEmailReference(ref)` | `users(email)` | foreign key 參照的 users table 與 email column |
 
 ### User Email Reference
 
@@ -73,15 +75,17 @@ defer db.Close()
 
 | 範例 | 意義 |
 |---|---|
-| `users(email)` | `users.email`，type 為 `text` |
-| `users(email):citext` | `users.email`，type 為 `citext` |
-| `auth.members(mail):varchar(255)` | `auth.members.mail`，type 為 `varchar(255)` |
+| `users(email)` | `users.email`，type `text` |
+| `users(email):citext` | `users.email`，type `citext` |
+| `auth.members(mail):varchar(255)` | `auth.members.mail`，type `varchar(255)` |
 
-不分大小寫，一律轉為小寫處理。`<type>` 必須與被參考的 column type 一致。
+- 不分大小寫，一律轉小寫
+- `<type>` 須與被參照的 column type 一致
 
 ### Auto Create Schema
 
-啟用後，`NewDatabase` 與 `New` 會建立 schema，需要 DDL 權限。未啟用時，請透過 `schema.Generate` 或下方 SQL 自行建立。
+- 啟用：`NewDatabase` 與 `New` 建立 schema，需 DDL 權限
+- 未啟用：以 `schema.Generate` 或下方 SQL 自行建立
 
 ## Schema
 
@@ -106,11 +110,10 @@ CREATE INDEX IF NOT EXISTS idx_auth_user_devices_updated_at ON auth_user_devices
 
 | Method | 說明 |
 |---|---|
-| `SaveDeviceSecret(userEmail, deviceName, secret)` | 建立 device 並回傳 `device_id`；email 不存在於 users table 時回傳 `ErrUserNotFound` |
-| `GetDeviceSecret(deviceID)` | 回傳 device 的 `secret` 與目前的 `generation` |
-| `UpdateDeviceSecret(deviceID)` | 將 device 的 `generation` 加 1、更新 `updated_at`，並回傳新的 `generation` |
+| `SaveDeviceSecret(userEmail, deviceName, secret)` | 建立 device 並回傳 `device_id`，email 不在 users table 時回傳 `ErrUserNotFound` |
+| `GetDeviceSecret(deviceID)` | 回傳 `secret` 與目前 `generation` |
+| `UpdateDeviceSecret(deviceID)` | `generation` 加 1、更新 `updated_at`，回傳新 `generation` |
 | `DeleteDevice(userEmail, deviceID)` | 刪除該使用者的單一 device |
-| `DeleteAllDevices(userEmail)` | 刪除該使用者的所有 device |
-| `DeleteAllDevicesReturningIDs(userEmail)` | 刪除該使用者的所有 device 並回傳其 ID |
-| `Close()` | 停止 cleanup worker；僅在 connection pool 由 `NewDatabase` 開啟時才會關閉它 |
-
+| `DeleteAllDevices(userEmail)` | 刪除該使用者所有 device |
+| `DeleteAllDevicesReturningIDs(userEmail)` | 刪除該使用者所有 device 並回傳 ID |
+| `Close()` | 停止 cleanup worker，pool 由 `NewDatabase` 開啟時才一併關閉 |
