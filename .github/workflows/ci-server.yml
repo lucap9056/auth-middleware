@@ -1,0 +1,150 @@
+name: CI Server
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            server:
+              - "server/**"
+              - "oauth2/**"
+              - "docker/**"
+              - ".dockerignore"
+              - ".github/workflows/ci-server.yml"
+
+  server-unit:
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./internal/... ./tests/
+
+  server-integration:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_REDIS_URL: redis://localhost:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./internal/... ./tests/
+
+  server-e2e:
+    needs: server-integration
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Start stack
+        run: docker compose -f ../docker/compose.yaml up --build --detach --wait
+
+      - name: Wait for middleware
+        run: |
+          for _ in $(seq 1 30); do
+            if curl --silent --fail http://localhost:8080/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "middleware did not become healthy" >&2
+          exit 1
+
+      - name: Run E2E tests
+        run: go test -v ./tests/e2e/
+
+      - name: Dump logs
+        if: failure()
+        run: docker compose -f ../docker/compose.yaml logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f ../docker/compose.yaml down --volumes
+
+  server-required:
+    if: always()
+    needs:
+      - changes
+      - server-unit
+      - server-integration
+      - server-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}; then
+            echo "one or more required jobs failed" >&2
+            exit 1
+          fi

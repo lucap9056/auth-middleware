@@ -1,0 +1,8 @@
+*
+!oauth2/
+!server/
+server/test-provider/
+**/*_test.go
+**/tests/
+**/*.md
+**/docs/
