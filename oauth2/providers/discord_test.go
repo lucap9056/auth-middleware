@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,7 +22,7 @@ func newDiscordServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc)
 
 func TestDiscordProvider_GetUser_Success(t *testing.T) {
 	server := newDiscordServer(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(DiscordUser{
+		json.MarshalWrite(w, DiscordUser{
 			ID:       "123456789",
 			Username: "testuser",
 			Email:    "test@discord.com",
@@ -56,7 +56,7 @@ func TestDiscordProvider_GetUser_RejectsUnverifiedEmail(t *testing.T) {
 	for name, discordUser := range cases {
 		t.Run(name, func(t *testing.T) {
 			server := newDiscordServer(t, func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(discordUser)
+				json.MarshalWrite(w, discordUser)
 			}, nil)
 			defer server.Close()
 

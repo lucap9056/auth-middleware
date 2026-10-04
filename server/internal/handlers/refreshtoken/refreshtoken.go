@@ -1,7 +1,7 @@
 package refreshtoken
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"time"
 
@@ -21,7 +21,7 @@ func FromRequest(r *http.Request) (string, error) {
 	}
 
 	var req Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
 		return "", err
 	}
 	return req.RefreshToken, nil

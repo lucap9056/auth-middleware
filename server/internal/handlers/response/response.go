@@ -1,7 +1,7 @@
 package response
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"log"
 	"net/http"
@@ -27,7 +27,7 @@ func JSON[T any](w http.ResponseWriter, success bool, message T, code int, inter
 		log.Printf("[ERROR] Status: %d, Msg: %v, Err: %v", code, message, internalErr)
 	}
 
-	json.NewEncoder(w).Encode(Body[T]{
+	json.MarshalWrite(w, Body[T]{
 		Success: success,
 		Message: message,
 	})

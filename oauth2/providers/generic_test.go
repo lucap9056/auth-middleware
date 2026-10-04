@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +23,7 @@ func newGenericServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc)
 
 func TestGenericProvider_GetUser_Success(t *testing.T) {
 	server := newGenericServer(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(GenericUser{
+		json.MarshalWrite(w, GenericUser{
 			ID:            "generic-001",
 			Email:         "user@example.com",
 			EmailVerified: true,

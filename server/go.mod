@@ -1,6 +1,6 @@
 module github.com/lucap9056/corvauth/server
 
-go 1.25.6
+go 1.27.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -12,7 +12,7 @@ require (
 	github.com/lucap9056/go-lifecycle/v2 v2.0.0
 	github.com/maypok86/otter/v2 v2.3.0
 	github.com/redis/rueidis v1.0.78
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.22.0
 )
 

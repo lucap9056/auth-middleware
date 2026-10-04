@@ -3,7 +3,7 @@ package providers
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -57,7 +57,7 @@ func (p *GitHubProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Use
 	}
 
 	var user GitHubUser
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &user); err != nil {
 		return nil, fmt.Errorf("failed to decode GitHub user: %w", err)
 	}
 
@@ -99,7 +99,7 @@ func (p *GitHubProvider) fetchPrimaryEmail(ctx context.Context, client *http.Cli
 	}
 
 	var emails []GitHubEmail
-	if err := json.NewDecoder(resp.Body).Decode(&emails); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &emails); err != nil {
 		return "", fmt.Errorf("failed to decode GitHub emails: %w", err)
 	}
 

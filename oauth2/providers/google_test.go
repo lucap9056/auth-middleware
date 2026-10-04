@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,7 +22,7 @@ func newGoogleServer(t *testing.T, userHandler, revokeHandler http.HandlerFunc) 
 
 func TestGoogleProvider_GetUser_Success(t *testing.T) {
 	server := newGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(GoogleUser{
+		json.MarshalWrite(w, GoogleUser{
 			Sub:           "google-uid-001",
 			Email:         "test@gmail.com",
 			EmailVerified: true,
@@ -56,7 +56,7 @@ func TestGoogleProvider_GetUser_RejectsUnverifiedEmail(t *testing.T) {
 	for name, googleUser := range cases {
 		t.Run(name, func(t *testing.T) {
 			server := newGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(googleUser)
+				json.MarshalWrite(w, googleUser)
 			}, nil)
 			defer server.Close()
 
