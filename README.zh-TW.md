@@ -1,54 +1,88 @@
-# Auth Middleware
+[English](README.md) | 繁體中文
 
-給 Go service 使用的 device-bound session 認證方案，由三個 module 組成，可以搭配使用，也可以單獨使用。
+# Corvauth
 
-## Modules
+Device-bound session 認證 server
 
-| Module | Import path | 用途 |
-|---|---|---|
-| [`oauth2`](./oauth2/README.zh-TW.md) | service（`oauth2/cmd`） | 認證 server：OAuth2 / OIDC 登入、簽發 session token、提供 reverse proxy 驗證 token |
-| [`jwt`](./jwt/README.zh-TW.md) | `github.com/lucap9056/auth-middleware/jwt/v2` | 簽發與驗證 access token、refresh token，每個 device 使用各自的 secret 簽章 |
-| [`database`](./database/README.zh-TW.md) | `github.com/lucap9056/auth-middleware/database/v2` | 把 device session 存在 PostgreSQL，透過 email 關聯到你的 users table |
+已有 reverse proxy 時，交給本專案處理驗證：
+
+- **後端不碰認證**：proxy 透過 `/verify` 驗證，後端只需讀 header
+- **直接對接 proxy**：支援 nginx `auth_request`、Traefik `forwardAuth`
+- **Header 防偽造**：設定 `IDENTITY_JWT_SECRET` 後改傳簽章過的 identity token
+- **整合部分 OAuth2.0**：Discord、GitHub、Google 與任意 OIDC provider
+- **可沿用既有 users table**：以 email 關聯，不需搬資料
 
 ```
-              ┌──────────────────────── oauth2 ────────────────────────┐
- browser ───▶ │ /login, /callback ──▶ OAuth2 / OIDC provider           │
- proxy   ───▶ │ /verify, /refresh ──▶ jwt ──▶ database ──▶ PostgreSQL  │
-              └────────────────────────────────────────────────────────┘
+               ┌──────────────────────── server ────────────────────────┐
+ browser ───▶   /login, /callback ──▶ OAuth2.0 / OIDC provider
+ proxy   ───▶   /verify, /refresh ──▶ jwt ──▶ database ──▶ PostgreSQL
+               └────────────────────────────────────────────────────────┘
 ```
 
-- 每次登入都會建立一個 **device session**，有自己的 signing secret。登出或刪除 device 只會讓該 device 的 token 失效。
-- Refresh token 每次使用都會 rotate，被換掉的舊 refresh token 會被拒絕（`ErrTokenRevoked`）。
-- 使用者以 **email** 識別。`auth_user_devices` table 透過 foreign key 參照 users table，刪除 user 時對應的 session 也會一併刪除。
+- 每次登入建立一個 **device session**，有自己的 signing secret
+  - 登出或刪除 device 只影響該 device 的 token
+- 使用者以 **email** 識別
+  - `auth_user_devices` 以 foreign key 參照 users table，刪除 user 時 session 一併刪除
 
 ## 快速開始
 
-### 執行認證 server
-
-最快看到整套運作的方式是 `oauth2` 的 compose 設定，會一次啟動 PostgreSQL、Redis、假的 OIDC provider 和 server：
+啟動 PostgreSQL、Redis、假 OIDC provider 與 server（`http://localhost:8080`）：
 
 ```bash
-cd oauth2
-docker compose up --build -d
+docker compose -f docker/compose.yaml up --build -d
 ```
 
-正式部署時透過環境變數設定 `oauth2`。它可以自己管理 users table，也可以使用你的應用程式既有的 users table，詳見 [oauth2 → 部署模式](./oauth2/README.zh-TW.md#部署模式)。
+Compose 使用 **managed users** 模式並開啟註冊，假 provider 的任何使用者都能登入
 
-### 在自己的 service 中使用 library
+正式部署使用 image `ghcr.io/lucap9056/corvauth`，以環境變數設定（見[設定](docs/configuration.zh-TW.md)）
 
-```bash
-go get github.com/lucap9056/auth-middleware/database/v2
-go get github.com/lucap9056/auth-middleware/jwt/v2
-```
+## 部署模式
 
-1. 確認 users table 的 email column 是 `PRIMARY KEY` 或有 `UNIQUE` constraint。
-2. 用 `database.NewDatabase(dsn, ...)` 開啟 device store；若要共用既有的 connection pool，改用 `database.New(sqlDB, ...)`。加上 `database.WithAutoCreateSchema(true)` 會在啟動時建立 `auth_user_devices` table。
-3. 把它傳給 `jwt.NewJWTManager(db, ...)` 來簽發與驗證 token。
+由 `DATABASE_URL` 與 `DB_USER_EMAIL_REFERENCE` 決定：
 
-Schema 由 `database` module 自己建立，不需要另外執行 SQL 檔。細節請見 [database](./database/README.zh-TW.md) 與 [jwt](./jwt/README.zh-TW.md) 的 README。
+| | Stateless proxy | Managed users | External users |
+|---|---|---|---|
+| **條件** | 未設 `DATABASE_URL` | 只設 `DATABASE_URL` | 兩者都設 |
+| **Users table** | 無 | `users`，由本 server 管理 | 你的 table，以 email 參照 |
+| **Session token** | 無，直接回傳 provider token | 有 | 有 |
+| **`/refresh`、`/verify`、`/logout`** | ✗ | ✓ | ✓ |
+| **`ALLOW_REGISTRATION`** | 無效 | 新使用者 insert 到 `users` | 無效（啟動時警告） |
+| **`DELETE /users/me`** | ✗ | 刪除使用者與所有 session | ✗ |
+| **`username` claim** | — | `users.username` | `DB_USER_USERNAME_COLUMN`，未設則為空 |
+| **`DB_AUTO_CREATE_SCHEMA=true` 建立** | — | `users`、`auth_user_devices` | `auth_user_devices` |
+
+## 文件
+
+- [部署模式](docs/deployment-modes.zh-TW.md)：各模式的 users table 設定
+- [Session](docs/sessions.zh-TW.md)：登入流程、token、rotation、provider token
+- [API](docs/api.zh-TW.md)：endpoint 與 error header
+- [設定](docs/configuration.zh-TW.md)：環境變數
 
 ## 需求
 
-- Library 需要 Go 1.24+，`oauth2` 需要 Go 1.25+
-- PostgreSQL 14+
-- Redis（選用；`oauth2` 多實例部署時必須）
+- PostgreSQL 14+（session 模式）
+- Redis（選用，多實例時必須）
+- 從原始碼建置：Go 1.27+
+
+## 測試
+
+在 `server/` 執行：
+
+```bash
+go test ./internal/... ./tests/
+```
+
+Unit 與 integration test 不需外部服務，其餘需要對應環境：
+
+| 測試 | 需求 | 指令 |
+|---|---|---|
+| `internal/cache/device`、`internal/flight` 的 Redis test | `TEST_REDIS_URL` | `go test ./internal/...`（未設則 skip） |
+| End-to-end | Compose 已啟動 | `go test ./tests/e2e/` |
+
+## Library
+
+| Module | 用途 |
+|---|---|
+| [jwt](./jwt/README.zh-TW.md) | 簽發與驗證 access / refresh token，每個 device 各自的 secret |
+| [database](./database/README.zh-TW.md) | 把 device session 存進 PostgreSQL，以 email 關聯 users table |
+| [oauth2](./oauth2/README.zh-TW.md) | OAuth2.0 / OIDC provider 與登入 client |

@@ -1,54 +1,88 @@
-# Auth Middleware
+English | [繁體中文](README.zh-TW.md)
 
-Device-bound session authentication for Go services, built from three modules that can be used together or on their own.
+# Corvauth
 
-## Modules
+Device-bound session authentication server
 
-| Module | Import path | What it does |
-|---|---|---|
-| [`oauth2`](./oauth2/README.md) | service (`oauth2/cmd`) | Authentication server: OAuth2 / OIDC login, session tokens, token verification for a reverse proxy |
-| [`jwt`](./jwt/README.md) | `github.com/lucap9056/auth-middleware/jwt/v2` | Issues and verifies access and refresh tokens, each device signed with its own secret |
-| [`database`](./database/README.md) | `github.com/lucap9056/auth-middleware/database/v2` | Stores device sessions in PostgreSQL, linked to your users table by email |
+If you already run a reverse proxy, let this project handle authentication:
+
+- **Backends skip auth**: the proxy verifies via `/verify`, backends only read headers
+- **Plugs into the proxy**: works with nginx `auth_request` and Traefik `forwardAuth`
+- **Tamper-proof headers**: with `IDENTITY_JWT_SECRET`, a signed identity token is sent instead
+- **Built-in OAuth2.0 providers**: Discord, GitHub, Google, and any OIDC provider
+- **Reuse your users table**: linked by email, no data migration
 
 ```
-              ┌──────────────────────── oauth2 ────────────────────────┐
- browser ───▶ │ /login, /callback ──▶ OAuth2 / OIDC provider           │
- proxy   ───▶ │ /verify, /refresh ──▶ jwt ──▶ database ──▶ PostgreSQL  │
-              └────────────────────────────────────────────────────────┘
+               ┌──────────────────────── server ────────────────────────┐
+ browser ───▶   /login, /callback ──▶ OAuth2.0 / OIDC provider
+ proxy   ───▶   /verify, /refresh ──▶ jwt ──▶ database ──▶ PostgreSQL
+               └────────────────────────────────────────────────────────┘
 ```
 
-- Every login creates a **device session** with its own signing secret. Logging out or deleting a device invalidates only that device's tokens.
-- Refresh tokens rotate on every use. A rotated-out refresh token is rejected (`ErrTokenRevoked`).
-- Users are identified by **email**. The `auth_user_devices` table references a users table through a foreign key, so deleting a user also removes their sessions.
+- Every login creates a **device session** with its own signing secret
+  - Logging out or deleting a device only affects that device's tokens
+- Users are identified by **email**
+  - `auth_user_devices` references the users table by foreign key, so deleting a user removes their sessions
 
-## Getting Started
+## Quick Start
 
-### Run the authentication server
-
-The quickest way to see everything working is the `oauth2` compose setup, which starts PostgreSQL, Redis, a fake OIDC provider, and the server:
+Starts PostgreSQL, Redis, a fake OIDC provider, and the server (`http://localhost:8080`):
 
 ```bash
-cd oauth2
-docker compose up --build -d
+docker compose -f docker/compose.yaml up --build -d
 ```
 
-For real deployments, configure `oauth2` through environment variables. It can manage its own users table or use one owned by your application. See [oauth2 → Deployment Modes](./oauth2/README.md#deployment-modes).
+Compose uses the **managed users** mode with registration on, so any fake provider user can sign in
 
-### Use the libraries in your own service
+Real deployments use the image `ghcr.io/lucap9056/corvauth`, configured through environment variables (see [Configuration](docs/configuration.md))
 
-```bash
-go get github.com/lucap9056/auth-middleware/database/v2
-go get github.com/lucap9056/auth-middleware/jwt/v2
-```
+## Deployment Modes
 
-1. Make sure your users table has an email column that is a `PRIMARY KEY` or `UNIQUE`.
-2. Open the device store with `database.NewDatabase(dsn, ...)`, or `database.New(sqlDB, ...)` to share an existing pool. `database.WithAutoCreateSchema(true)` creates the `auth_user_devices` table on startup.
-3. Pass it to `jwt.NewJWTManager(db, ...)` to issue and verify tokens.
+Selected by `DATABASE_URL` and `DB_USER_EMAIL_REFERENCE`:
 
-The schema is created by the `database` module itself. There is no separate SQL file to run. See the [database](./database/README.md) and [jwt](./jwt/README.md) READMEs for details.
+| | Stateless proxy | Managed users | External users |
+|---|---|---|---|
+| **Set when** | `DATABASE_URL` unset | only `DATABASE_URL` set | both set |
+| **Users table** | none | `users`, owned by this server | yours, referenced by email |
+| **Session tokens** | no, provider tokens returned as-is | yes | yes |
+| **`/refresh`, `/verify`, `/logout`** | ✗ | ✓ | ✓ |
+| **`ALLOW_REGISTRATION`** | ignored | inserts new users into `users` | ignored (warns on startup) |
+| **`DELETE /users/me`** | ✗ | deletes the user and all sessions | ✗ |
+| **`username` claim** | — | `users.username` | `DB_USER_USERNAME_COLUMN`, or empty |
+| **`DB_AUTO_CREATE_SCHEMA=true` creates** | — | `users`, `auth_user_devices` | `auth_user_devices` |
+
+## Documentation
+
+- [Deployment Modes](docs/deployment-modes.md): users table setup per mode
+- [Sessions](docs/sessions.md): login flow, tokens, rotation, provider tokens
+- [API](docs/api.md): endpoints and error headers
+- [Configuration](docs/configuration.md): environment variables
 
 ## Requirements
 
-- Go 1.24+ for the libraries, Go 1.25+ for `oauth2`
-- PostgreSQL 14+
-- Redis (optional; required for multi-instance `oauth2` deployments)
+- PostgreSQL 14+ (session modes)
+- Redis (optional; required for multiple instances)
+- Building from source: Go 1.27+
+
+## Testing
+
+Run in `server/`:
+
+```bash
+go test ./internal/... ./tests/
+```
+
+Unit and integration tests need no external services; others need their environment:
+
+| Suite | Requirement | Command |
+|---|---|---|
+| Redis tests in `internal/cache/device`, `internal/flight` | `TEST_REDIS_URL` | `go test ./internal/...` (skipped when unset) |
+| End-to-end | compose running | `go test ./tests/e2e/` |
+
+## Libraries
+
+| Module | Purpose |
+|---|---|
+| [jwt](./jwt/README.md) | Issues and verifies access / refresh tokens, one secret per device |
+| [database](./database/README.md) | Stores device sessions in PostgreSQL, linked to your users table by email |
+| [oauth2](./oauth2/README.md) | OAuth2.0 / OIDC providers and login client |

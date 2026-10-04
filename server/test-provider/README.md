@@ -1,6 +1,6 @@
 # test-provider
 
-A minimal OIDC/OAuth2 provider for integration testing. Implements the
+A minimal OIDC/OAuth2.0 provider for integration testing. Implements the
 Authorization Code + PKCE flow with no credential verification — `/auth`
 issues an authorization code immediately and redirects back to
 `redirect_uri`. User info is fixed via environment variables, making it
@@ -31,13 +31,13 @@ with no security guarantees.
 ## Building the image
 
 ```bash
-docker build -t oauth2-test-provider:local .
+docker build -t corvauth-test-provider:local .
 ```
 
 The container exposes port `5556`.
 
 ## Use case
 
-Serves as an integration test target for OIDC/OAuth2 client, letting
-E2E tests exercise a full OAuth2/OIDC authorization flow without relying
+Serves as an integration test target for OIDC/OAuth2.0 client, letting
+E2E tests exercise a full OAuth2.0/OIDC authorization flow without relying
 on an external third-party login service.
