@@ -1,11 +1,11 @@
 # JWT Module
 
-This module issues and verifies access and refresh tokens. Each device has its own signing secret.
+Issues and verifies access and refresh tokens, with one signing secret per device
 
 ## Installation
 
 ```bash
-go get github.com/lucap9056/auth-middleware/jwt/v2
+go get github.com/lucap9056/corvauth/jwt
 ```
 
 ## Database
@@ -21,13 +21,13 @@ type Database interface {
 
 | Method | Behavior |
 |---|---|
-| `UpdateDeviceSecret(deviceID)` | Increments the device's generation and returns the new value; returns an error if the device does not exist |
-| `GetDeviceSecret(deviceID)` | Returns the device's secret and current generation |
+| `UpdateDeviceSecret(deviceID)` | Increments the generation and returns it; errors if the device does not exist |
+| `GetDeviceSecret(deviceID)` | Returns the secret and current generation |
 
 ## Usage
 
 ```go
-import "github.com/lucap9056/auth-middleware/jwt/v2"
+import "github.com/lucap9056/corvauth/jwt"
 
 manager := jwt.NewJWTManager(db,
 	jwt.WithIssuer("auth-service"),
@@ -37,7 +37,9 @@ manager := jwt.NewJWTManager(db,
 
 ### Login
 
-The caller generates the secret, stores it in the database, and passes it to `GenerateRefresh` for signing. A newly created device starts at generation `1`:
+The caller generates the secret, stores it, and passes it to `GenerateRefresh`
+
+New devices start at generation `1`:
 
 ```go
 secret := randomHex(32)
@@ -49,7 +51,10 @@ accessToken, err := manager.GenerateAccess(refreshToken, username)
 
 ### Rotating the refresh token
 
-The claims returned by `RotateRefresh` are those of the new refresh token on success, and those of the given token on verification failure:
+Claims returned by `RotateRefresh`:
+
+- success: the new refresh token's claims
+- verification failure: the given token's claims
 
 ```go
 newRefreshToken, claims, err := manager.RotateRefresh(refreshToken)
@@ -66,22 +71,22 @@ claims, err := manager.VerifyAccess(accessToken)
 
 ## Tokens
 
-Both tokens are signed with HS256 using the device's secret, and their purpose is marked by the JWS `typ` header (RFC 8725 §3.11):
+Both are signed with HS256 using the device secret; the JWS `typ` header marks their purpose (RFC 8725 §3.11)
 
 | Token | `typ` | Claims |
 |---|---|---|
 | Access token | `access+jwt` | `sub`, `user_email`, `username`, `device_id`, `generation`, `iss`, `aud`, `iat`, `exp` |
 | Refresh token | `refresh+jwt` | `sub`, `device_id`, `generation`, `iss`, `aud`, `iat`, `exp` |
 
-`sub` is the user's email.
+`sub` is the user's email
 
 ### Verification
 
-`VerifyAccess`, `VerifyRefresh`, and `GenerateAccess` (which verifies the given refresh token) check, in order:
+`VerifyAccess`, `VerifyRefresh`, and `GenerateAccess` (on the given refresh token) check, in order:
 
-1. `typ` matches the token kind, case-insensitively, with an optional `application/` prefix
+1. `typ` matches the token kind (case-insensitive, optional `application/` prefix)
 2. The device exists
-3. The signature is valid and the token has not expired
+3. The signature is valid and not expired
 4. `iss` / `aud` match when `WithIssuer` / `WithAudience` are set
 5. The token's `generation` equals the device's current generation
 
@@ -89,10 +94,12 @@ Both tokens are signed with HS256 using the device's secret, and their purpose i
 
 | Error | When |
 |---|---|
-| `ErrTokenRevoked` | Only check 5 fails: the token was issued by this service but has since been rotated |
-| `ErrInvalidToken` | Any other verification failure |
+| `ErrTokenRevoked` | Only check 5 fails: issued here but since rotated |
+| `ErrInvalidToken` | Any other failure |
 
-`ErrTokenRevoked` wraps `ErrInvalidToken`, so `errors.Is(err, jwt.ErrInvalidToken)` holds for both. Check `ErrTokenRevoked` first when you need to tell them apart.
+`ErrTokenRevoked` wraps `ErrInvalidToken`, so `errors.Is(err, jwt.ErrInvalidToken)` holds for both
+
+Check `ErrTokenRevoked` first to tell them apart
 
 ## Options
 
@@ -100,8 +107,8 @@ Both tokens are signed with HS256 using the device's secret, and their purpose i
 |---|---|---|
 | `WithAccessTokenDuration(d)` | `15m` | Access token lifetime |
 | `WithRefreshTokenDuration(d)` | `7d` | Refresh token lifetime |
-| `WithIssuer(iss)` | empty | Written to `iss`; must match on verification when non-empty |
-| `WithAudience(aud)` | empty | Written to `aud`; must be contained on verification when non-empty |
+| `WithIssuer(iss)` | empty | Written to `iss`; must match when non-empty |
+| `WithAudience(aud)` | empty | Written to `aud`; must be contained when non-empty |
 
 ## Testing
 
