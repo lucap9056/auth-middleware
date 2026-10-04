@@ -3,7 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -29,7 +29,7 @@ func newOIDCServer(t *testing.T, discovery *OIDCDiscovery, userinfoHandler, revo
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(discovery)
+		json.MarshalWrite(w, discovery)
 	})
 	if userinfoHandler != nil {
 		mux.HandleFunc("/userinfo", userinfoHandler)
@@ -99,7 +99,7 @@ func TestFetchDiscovery_RetriesOnServerError(t *testing.T) {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(OIDCDiscovery{
+		json.MarshalWrite(w, OIDCDiscovery{
 			Issuer:                "http://" + r.Host,
 			AuthorizationEndpoint: "http://" + r.Host + "/authorize",
 			TokenEndpoint:         "http://" + r.Host + "/token",
@@ -150,7 +150,7 @@ func TestFetchDiscovery_MalformedJSON(t *testing.T) {
 
 func TestFetchDiscovery_MissingRequiredEndpoints(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"issuer": "https://example.com"})
+		json.MarshalWrite(w, map[string]string{"issuer": "https://example.com"})
 	}))
 	defer srv.Close()
 
@@ -162,7 +162,7 @@ func TestFetchDiscovery_MissingRequiredEndpoints(t *testing.T) {
 
 func TestFetchDiscovery_MissingIssuer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(OIDCDiscovery{
+		json.MarshalWrite(w, OIDCDiscovery{
 			AuthorizationEndpoint: "https://example.com/authorize",
 			TokenEndpoint:         "https://example.com/token",
 		})
@@ -291,7 +291,7 @@ func TestOIDCProvider_GetUser_ViaIDToken(t *testing.T) {
 
 func TestOIDCProvider_GetUser_UserinfoFallback(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(idTokenClaims{
+		json.MarshalWrite(w, idTokenClaims{
 			Sub:           "oidc-user-2",
 			Email:         "fallback@example.com",
 			EmailVerified: true,
@@ -326,7 +326,7 @@ func TestOIDCProvider_GetUser_IDTokenMissingEmail_FallsBackToUserinfo(t *testing
 	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(idTokenClaims{
+		json.MarshalWrite(w, idTokenClaims{
 			Sub:           "oidc-user-3",
 			Email:         "fromendpoint@example.com",
 			EmailVerified: true,
@@ -358,7 +358,7 @@ func TestOIDCProvider_GetUser_UnverifiedEmailRejected(t *testing.T) {
 	token := newTestToken().WithExtra(map[string]any{"id_token": idToken})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(idTokenClaims{Sub: "oidc-user-4", Email: "unverified@example.com"})
+		json.MarshalWrite(w, idTokenClaims{Sub: "oidc-user-4", Email: "unverified@example.com"})
 	}))
 	defer srv.Close()
 

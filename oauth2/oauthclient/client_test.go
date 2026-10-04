@@ -2,7 +2,7 @@ package oauthclient
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -66,7 +66,7 @@ func TestAuthURL_ProviderSpecificParams(t *testing.T) {
 
 func TestNewOIDC_OfflineAccessAddsPromptConsent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(providers.OIDCDiscovery{
+		json.MarshalWrite(w, providers.OIDCDiscovery{
 			Issuer:                "http://" + r.Host,
 			AuthorizationEndpoint: "http://" + r.Host + "/auth",
 			TokenEndpoint:         "http://" + r.Host + "/token",

@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +25,7 @@ func newGitHubServer(t *testing.T, userHandler, emailsHandler, revokeHandler htt
 
 func TestGitHubProvider_GetUser_PublicEmail(t *testing.T) {
 	srv := newGitHubServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(GitHubUser{
+		json.MarshalWrite(w, GitHubUser{
 			ID:    12345,
 			Login: "testuser",
 			Name:  "Test User",
@@ -54,7 +54,7 @@ func TestGitHubProvider_GetUser_PublicEmail(t *testing.T) {
 func TestGitHubProvider_GetUser_PrivateEmailFallback(t *testing.T) {
 	srv := newGitHubServer(t,
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode(GitHubUser{
+			json.MarshalWrite(w, GitHubUser{
 				ID:    99999,
 				Login: "privateuser",
 				Name:  "Private User",
@@ -62,7 +62,7 @@ func TestGitHubProvider_GetUser_PrivateEmailFallback(t *testing.T) {
 			})
 		},
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode([]GitHubEmail{
+			json.MarshalWrite(w, []GitHubEmail{
 				{Email: "secondary@example.com", Primary: false, Verified: true},
 				{Email: "private@example.com", Primary: true, Verified: true},
 			})
@@ -84,7 +84,7 @@ func TestGitHubProvider_GetUser_PrivateEmailFallback(t *testing.T) {
 
 func TestGitHubProvider_GetUser_EmptyNameFallsBackToLogin(t *testing.T) {
 	srv := newGitHubServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		json.NewEncoder(w).Encode(GitHubUser{
+		json.MarshalWrite(w, GitHubUser{
 			ID:    77777,
 			Login: "loginonly",
 			Name:  "",
@@ -107,10 +107,10 @@ func TestGitHubProvider_GetUser_EmptyNameFallsBackToLogin(t *testing.T) {
 func TestGitHubProvider_GetUser_NoVerifiedPrimaryEmail(t *testing.T) {
 	srv := newGitHubServer(t,
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode(GitHubUser{ID: 1, Login: "u", Email: ""})
+			json.MarshalWrite(w, GitHubUser{ID: 1, Login: "u", Email: ""})
 		},
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode([]GitHubEmail{
+			json.MarshalWrite(w, []GitHubEmail{
 				{Email: "unverified@example.com", Primary: true, Verified: false},
 			})
 		},
@@ -128,10 +128,10 @@ func TestGitHubProvider_GetUser_NoVerifiedPrimaryEmail(t *testing.T) {
 func TestGitHubProvider_GetUser_UnverifiedPrimaryEmailAllowed(t *testing.T) {
 	srv := newGitHubServer(t,
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode(GitHubUser{ID: 1, Login: "u", Email: ""})
+			json.MarshalWrite(w, GitHubUser{ID: 1, Login: "u", Email: ""})
 		},
 		func(w http.ResponseWriter, _ *http.Request) {
-			json.NewEncoder(w).Encode([]GitHubEmail{
+			json.MarshalWrite(w, []GitHubEmail{
 				{Email: "unverified@example.com", Primary: true, Verified: false},
 			})
 		},
@@ -166,7 +166,7 @@ func TestGitHubProvider_Revoke_Success(t *testing.T) {
 	var receivedToken string
 	srv := newGitHubServer(t, nil, nil, func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
+		json.UnmarshalRead(r.Body, &body)
 		receivedToken = body["access_token"]
 		w.WriteHeader(http.StatusNoContent)
 	})

@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -53,7 +53,7 @@ func (p *DiscordProvider) GetUser(ctx context.Context, token *oauth2.Token) (*Us
 	}
 
 	var user DiscordUser
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &user); err != nil {
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
 

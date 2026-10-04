@@ -2,7 +2,7 @@ package integration
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +48,7 @@ func TestLogin(t *testing.T) {
 			URL string `json:"url"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success {
@@ -81,7 +81,7 @@ func loginState(t *testing.T, env *testEnv) string {
 			URL string `json:"url"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode login response: %v", err)
 	}
 	u, err := url.Parse(resp.Message.URL)
@@ -126,7 +126,7 @@ func TestCallback_ExistingUser(t *testing.T) {
 			RefreshToken string `json:"refresh_token"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success {
@@ -182,7 +182,7 @@ func TestCallback_RegistrationEnabled(t *testing.T) {
 	var resp struct {
 		Success bool `json:"success"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success {
@@ -269,7 +269,7 @@ func TestCallback_NoDB_OAuthTokens(t *testing.T) {
 			RefreshToken string `json:"refresh_token"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success {
@@ -334,7 +334,7 @@ func TestRefresh_WithBody(t *testing.T) {
 			RefreshToken string `json:"refresh_token"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success {
@@ -370,7 +370,7 @@ func TestRefresh_WithCookie(t *testing.T) {
 	var resp struct {
 		Success bool `json:"success"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success {
@@ -388,7 +388,7 @@ func refreshWithCookie(env *testEnv, refreshToken string) (int, string) {
 			RefreshToken string `json:"refresh_token"`
 		} `json:"message"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	json.UnmarshalRead(w.Body, &resp)
 	return w.Code, resp.Message.RefreshToken
 }
 
@@ -474,7 +474,7 @@ func TestRefreshAccess(t *testing.T) {
 		Success bool   `json:"success"`
 		Message string `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Success || resp.Message == "" {
@@ -687,7 +687,7 @@ func TestCallback_UsernameFromUsersTable(t *testing.T) {
 			AccessToken string `json:"access_token"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got := accessUsername(t, env, resp.Message.AccessToken); got != "Stored Name" {
@@ -720,7 +720,7 @@ func TestRefresh_UsernameFromUsersTable(t *testing.T) {
 			AccessToken string `json:"access_token"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got := accessUsername(t, env, resp.Message.AccessToken); got != "New Name" {
@@ -774,7 +774,7 @@ func TestRefreshAccess_UsernameFromUsersTable(t *testing.T) {
 	var resp struct {
 		Message string `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got := accessUsername(t, env, resp.Message); got != "Access Name" {
@@ -897,7 +897,7 @@ func TestCallback_RegistrationUsesProviderName(t *testing.T) {
 			AccessToken string `json:"access_token"`
 		} `json:"message"`
 	}
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+	if err := json.UnmarshalRead(w.Body, &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got := accessUsername(t, env, resp.Message.AccessToken); got != "Provider Name" {

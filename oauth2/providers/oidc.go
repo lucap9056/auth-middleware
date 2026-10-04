@@ -3,7 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -190,7 +190,7 @@ func (p *OIDCProvider) fetchUserinfo(ctx context.Context, token *oauth2.Token) (
 	}
 
 	var claims idTokenClaims
-	if err := json.NewDecoder(resp.Body).Decode(&claims); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &claims); err != nil {
 		return nil, fmt.Errorf("failed to decode userinfo: %w", err)
 	}
 

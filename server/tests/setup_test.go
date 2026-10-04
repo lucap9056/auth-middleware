@@ -2,7 +2,7 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -43,7 +43,7 @@ func newOAuthStub(userID, email, name string) *oauthStub {
 
 func (s *oauthStub) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	json.MarshalWrite(w, map[string]any{
 		"issuer":                 s.URL,
 		"authorization_endpoint": s.URL + "/authorize",
 		"token_endpoint":         s.URL + "/token",
@@ -55,7 +55,7 @@ func (s *oauthStub) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
 
 func (s *oauthStub) handleToken(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	json.MarshalWrite(w, map[string]any{
 		"access_token":  "stub-access-token",
 		"refresh_token": "stub-refresh-token",
 		"token_type":    "Bearer",
@@ -65,7 +65,7 @@ func (s *oauthStub) handleToken(w http.ResponseWriter, _ *http.Request) {
 
 func (s *oauthStub) handleUserInfo(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	json.MarshalWrite(w, map[string]any{
 		"id":             s.UserID,
 		"email":          s.Email,
 		"email_verified": true,

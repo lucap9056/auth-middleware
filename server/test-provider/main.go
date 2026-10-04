@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"log"
 	"net"
 	"net/http"
@@ -181,7 +181,7 @@ func buildIDToken() string {
 		"email":          userEmail,
 		"email_verified": true,
 		"name":           userName,
-		"aud":            "oauth2-middleware",
+		"aud":            "corvauth",
 		"iat":            time.Now().Unix(),
 		"exp":            time.Now().Add(time.Hour).Unix(),
 	})
@@ -201,5 +201,5 @@ func randomToken() string {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	json.MarshalWrite(w, v)
 }

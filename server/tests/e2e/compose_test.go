@@ -2,7 +2,7 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net"
 	"net/http"
 	"testing"
@@ -84,7 +84,7 @@ func TestFlow(t *testing.T) {
 				URL string `json:"url"`
 			} `json:"message"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&loginBody); err != nil {
+		if err := json.UnmarshalRead(resp.Body, &loginBody); err != nil {
 			t.Fatalf("GET /login: decode: %v", err)
 		}
 		if !loginBody.Success || loginBody.Message.URL == "" {
@@ -124,7 +124,7 @@ func TestFlow(t *testing.T) {
 				AccessToken string `json:"access_token"`
 			} `json:"message"`
 		}
-		if err := json.NewDecoder(cbResp.Body).Decode(&tokenBody); err != nil {
+		if err := json.UnmarshalRead(cbResp.Body, &tokenBody); err != nil {
 			t.Fatalf("GET /callback: decode: %v", err)
 		}
 		if !tokenBody.Success || tokenBody.Message.AccessToken == "" {
