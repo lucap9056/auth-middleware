@@ -9,7 +9,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/lucap9056/auth-middleware/database/v2/schema"
+	"github.com/lucap9056/corvauth/database/schema"
 )
 
 const unreachableDSN = "postgres://user:pass@127.0.0.1:1/db?connect_timeout=1"

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lucap9056/auth-middleware/database/v2/schema"
+	"github.com/lucap9056/corvauth/database/schema"
 )
 
 func TestDefaultOptions_DefaultSchema(t *testing.T) {

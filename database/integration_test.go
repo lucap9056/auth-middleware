@@ -13,7 +13,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/lucap9056/auth-middleware/database/v2"
+	"github.com/lucap9056/corvauth/database"
 )
 
 type testEnv struct {

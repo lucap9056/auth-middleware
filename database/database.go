@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/lucap9056/auth-middleware/database/v2/schema"
+	"github.com/lucap9056/corvauth/database/schema"
 )
 
 const schemaAdvisoryLockKey int64 = 0x6175746864657669
