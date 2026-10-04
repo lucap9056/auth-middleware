@@ -1,4 +1,4 @@
-module github.com/lucap9056/auth-middleware/jwt/v2
+module github.com/lucap9056/corvauth/jwt
 
 go 1.24.0
 
