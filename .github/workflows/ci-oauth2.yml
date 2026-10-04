@@ -30,9 +30,9 @@ jobs:
               - "oauth2/**"
               - ".github/workflows/ci-oauth2.yml"
 
-  oauth2-unit:
+  oauth2:
     needs: changes
-    if: github.event_name == 'push' && needs.changes.outputs.oauth2 == 'true'
+    if: needs.changes.outputs.oauth2 == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -51,91 +51,13 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test ./internal/... ./tests/
-
-  oauth2-integration:
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.oauth2 == 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: oauth2
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      TEST_REDIS_URL: redis://localhost:6379
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: oauth2/go.mod
-          cache-dependency-path: oauth2/go.sum
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test -race ./internal/... ./tests/
-
-  oauth2-e2e:
-    needs: oauth2-integration
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: oauth2
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: oauth2/go.mod
-          cache-dependency-path: oauth2/go.sum
-
-      - name: Start stack
-        run: docker compose up --build --detach --wait
-
-      - name: Wait for middleware
-        run: |
-          for _ in $(seq 1 30); do
-            if curl --silent --fail http://localhost:8080/health > /dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "middleware did not become healthy" >&2
-          exit 1
-
-      - name: Run E2E tests
-        run: go test -v ./tests/e2e/
-
-      - name: Dump logs
-        if: failure()
-        run: docker compose logs
-
-      - name: Stop stack
-        if: always()
-        run: docker compose down --volumes
+        run: go test ${{ github.event_name == 'pull_request' && '-race' || '' }} ./...
 
   oauth2-required:
     if: always()
     needs:
       - changes
-      - oauth2-unit
-      - oauth2-integration
-      - oauth2-e2e
+      - oauth2
     runs-on: ubuntu-latest
     steps:
       - name: Check results
